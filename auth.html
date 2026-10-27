@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>התחברות · מרחב למידה</title><link rel="icon" href="icon-192.png"><meta name="theme-color" content="#6366f1">
+<style>
+:root{color-scheme:light}*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;background:linear-gradient(160deg,#eef2ff,#f8fafc);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#1e293b}
+.card{width:100%;max-width:360px;background:#fff;border-radius:24px;padding:28px 22px;box-shadow:0 12px 40px rgba(30,41,59,.12);text-align:center}
+img{width:64px;height:64px;border-radius:16px}h1{font-size:20px;margin:14px 0 6px}p{font-size:14px;line-height:1.6;color:#475569;margin:0 0 18px}
+button,a.btn{display:block;width:100%;padding:13px;border-radius:14px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-decoration:none}
+button{background:#6366f1;color:#fff}button:disabled{opacity:.55}a.btn{background:#10b981;color:#fff;margin-top:10px}
+#msg{min-height:20px;font-size:13px;margin-top:12px;color:#475569}#msg.err{color:#e11d48}
+</style></head><body><div class="card">
+<img src="icon-192.png" alt=""><h1>התחברות לאפליקציה</h1>
+<p>התחבר עם חשבון Google. מיד אחרי ההתחברות תחזור לאפליקציה.</p>
+<button id="go" type="button">התחברות עם Google</button>
+<a id="back" class="btn" hidden>חזרה לאפליקציה</a>
+<div id="msg" role="status"></div></div>
+<script src="firebase-bundle.js"></script>
+<script>
+(function () {
+  var cfg = {"apiKey": "AIzaSyDeLTazKtX77xKi6GXwRzzg1XILm-hplck", "authDomain": "learnspace-b05ba.firebaseapp.com", "projectId": "learnspace-b05ba", "storageBucket": "learnspace-b05ba.firebasestorage.app", "messagingSenderId": "1088637825507", "appId": "1:1088637825507:web:2eaf2aa74ec5f80a05f0d6"}, go = document.getElementById('go'), back = document.getElementById('back'), msg = document.getElementById('msg');
+  function say(t, err) { msg.textContent = t; msg.className = err ? 'err' : ''; }
+  if (!cfg || !window.FB) { go.disabled = true; say('הסנכרון עוד לא הוגדר באתר.', true); return; }
+  var auth;
+  try { var app = FB.initializeApp(cfg); auth = FB.initializeAuth(app, { persistence: FB.browserLocalPersistence, popupRedirectResolver: FB.browserPopupRedirectResolver }); }
+  catch (e) { say('שגיאה בטעינה. רענן את הדף.', true); return; }
+  go.onclick = function () {
+    go.disabled = true; say('פותח את חלון ההתחברות...');
+    var p = new FB.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' });
+    FB.signInWithPopup(auth, p).then(function (r) {
+      var c = FB.GoogleAuthProvider.credentialFromResult(r), t = c && c.idToken;
+      if (!t) throw { code: 'no-token' };
+      var href = 'intent://auth?t=' + encodeURIComponent(t) + '#Intent;scheme=learnspace;package=il.student.academic;end';
+      back.href = href; back.hidden = false; go.hidden = true;
+      say('מחובר בתור ' + (r.user.email || '') + '. אם האפליקציה לא נפתחה, לחץ "חזרה לאפליקציה".');
+      FB.signOut(auth).catch(function () {});        // the browser does not need to stay signed in
+      location.href = href;
+    }).catch(function (e) {
+      go.disabled = false;
+      var c = (e && e.code) || '';
+      if (/popup-closed|cancelled/.test(c)) say('');
+      else if (/unauthorized-domain/.test(c)) say('הכתובת הזו לא מאושרת ב-Firebase (Authorized domains).', true);
+      else if (/popup-blocked/.test(c)) say('הדפדפן חסם את החלון. לחץ שוב על הכפתור.', true);
+      else say('ההתחברות נכשלה (' + c.replace('auth/', '') + '). נסה שוב.', true);
+    });
+  };
+})();
+</script></body></html>
