@@ -3604,6 +3604,9 @@
             const remote = cloudParse(d);
             Sync.lastAt = Date.now();
             const uid = Cloud.user && Cloud.user.uid, link = cloudLink();
+            if (d && d.deleted && link && link.uid === uid && (link.at || 0) < (d.deletedAt || 0)) {   // the user erased the cloud copy from another device
+                cloudSignOut(true); showToast('הנתונים נמחקו מהענן ממכשיר אחר, ולכן המכשיר הזה התנתק. הנתונים במכשיר נשארו', 'info'); return;
+            }
             if (uid && (!link || link.uid !== uid)) {           // first time this device meets this account
                 const lc = payloadCount(payloadOf(state)), rc = remote ? payloadCount(payloadOf(remote)) : { all: 0 };
                 if (remote && lc.all && rc.all && canon(sortedPayload(payloadOf(remote))) !== canon(sortedPayload(payloadOf(state)))) { cloudAskFirst(remote, lc, rc); return; }
@@ -3758,6 +3761,18 @@
             if (skipAsk) return go();
             showConfirmModal('התנתקות מהסנכרון', 'הנתונים יישארו במכשיר הזה, אבל שינויים כאן לא יגיעו למכשירים האחרים עד שתתחבר שוב.', go);
         }
+        // erase this account's copy in the cloud (other signed-in devices sign out when they see it); data on this device stays
+        function cloudDeleteMine() {
+            if (!Cloud.user || !Sync.ref) return;
+            if (navigator.onLine === false) { showToast('צריך חיבור לאינטרנט כדי למחוק מהענן', 'error'); return; }
+            showConfirmModal('מחיקת הנתונים שלי מהענן', 'כל המשימות, הלו"ז וההרגלים יימחקו מהענן, ומכשירים אחרים שמחוברים לחשבון יתנתקו. במכשיר הזה הנתונים נשארים. אי אפשר לבטל.', async () => {
+                const ref = Sync.ref, user = Cloud.user; cloudDetach();
+                try { await Cloud.fb.setDoc(ref, { v: SCHEMA_VERSION, deleted: true, deletedAt: Date.now() }); }
+                catch (e) { showToast('המחיקה נכשלה. נסה שוב', 'error'); cloudStart(user); return; }
+                try { if (Cloud.fb.deleteUser) await Cloud.fb.deleteUser(user); } catch (e) {}   // also remove the sign-in record when Google allows it (recent sign-in)
+                await cloudSignOut(true); showToast('הנתונים נמחקו מהענן', 'success');
+            });
+        }
         function cloudSyncNow() { if (!Sync.ref) return; if (!Sync.ready) { showToast(SYNC_UI[Sync.status].msg, 'info'); return; } Sync.lastPushed = null; pushNow(); }
         function cloudAgo(t) { if (!t) return ''; const s = Math.round((Date.now() - t) / 1000); if (s < 60) return 'עכשיו'; const m = Math.round(s / 60); if (m < 60) return `לפני ${m} דק'`; const h = Math.round(m / 60); return h < 24 ? `לפני ${h} שע'` : new Date(t).toLocaleDateString('he-IL'); }
         function renderCloudSettings() {
@@ -3769,12 +3784,14 @@
             if (!CLOUD_CONFIG) body = `<p class="text-[11px] opacity-70 leading-relaxed">הסנכרון פועל בגרסה המותקנת מהאתר ובאפליקציה. בקובץ הזה הנתונים נשמרים רק במכשיר.</p>`;
             else if (Cloud.user) body = `<div class="flex items-center gap-2 text-xs"><i class="fa-solid fa-circle-user text-indigo-400"></i><span class="font-bold truncate" dir="ltr">${escapeHtml(Cloud.user.email || '')}</span></div>
                 <div class="flex items-center gap-2 text-[11px]">${dot}<span>${ui.msg}${Sync.status === 'synced' && Sync.lastAt ? ' · ' + cloudAgo(Sync.lastAt) : ''}</span></div>
-                <div class="flex gap-2 pt-1"><button type="button" onclick="cloudSyncNow()" class="${btn} bg-indigo-500 text-white hover:bg-indigo-600"><i class="fa-solid fa-rotate ml-1"></i>סנכרן עכשיו</button><button type="button" onclick="cloudSignOut()" class="${btn} bg-white text-slate-600 border border-slate-200 hover:bg-slate-50">התנתקות</button></div>`;
+                <div class="flex gap-2 pt-1"><button type="button" onclick="cloudSyncNow()" class="${btn} bg-indigo-500 text-white hover:bg-indigo-600"><i class="fa-solid fa-rotate ml-1"></i>סנכרן עכשיו</button><button type="button" onclick="cloudSignOut()" class="${btn} bg-white text-slate-600 border border-slate-200 hover:bg-slate-50">התנתקות</button></div>
+                <button type="button" onclick="cloudDeleteMine()" class="text-[11px] font-semibold text-rose-600 hover:underline">מחיקת הנתונים שלי מהענן</button>`;
             else body = `<p class="text-[11px] opacity-70 leading-relaxed">התחבר עם אותו חשבון Google בטלפון, בטאבלט ובמחשב, והמשימות, הלו"ז וההרגלים יהיו זהים בכולם. אפשר להמשיך לעבוד גם בלי אינטרנט.</p>
                 ${Cloud.loadErr ? `<p class="text-[11px] text-amber-700">אין חיבור לשירות הסנכרון כרגע. נסה שוב כשיש אינטרנט.</p>` : ''}
                 <button type="button" onclick="cloudSignIn()" ${Cloud.busy || !Cloud.auth ? 'disabled' : ''} class="${btn} w-full bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2 disabled:opacity-50"><i class="fa-solid fa-right-to-bracket text-indigo-500"></i>${Cloud.busy ? 'ממתין להתחברות...' : 'התחברות עם Google'}</button>`;
             box.innerHTML = `<h4 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-cloud text-indigo-500"></i> סנכרון בין מכשירים</h4>${body}
-                <p class="text-[10px] opacity-50 leading-relaxed">ערכת נושא, גודל גופן והתראות נשמרים לכל מכשיר בנפרד.</p>`;
+                <p class="text-[10px] opacity-50 leading-relaxed">ערכת נושא, גודל גופן והתראות נשמרים לכל מכשיר בנפרד.</p>
+                <details class="text-[10px] leading-relaxed"><summary class="cursor-pointer font-semibold opacity-70">פרטיות: מי רואה את הנתונים?</summary><p class="opacity-70 mt-1">הנתונים נשמרים בשרת Firebase של Google, בפרויקט של מי שהפעיל את האפליקציה. משתמשים אחרים לא יכולים לראות אותם, אבל מנהל הפרויקט יכול לגשת אליהם ממסוף Firebase. אפשר למחוק אותם בכל רגע בכפתור "מחיקת הנתונים שלי מהענן".</p></details>`;
         }
         // Android app 3.0+: the app now opens the web address, so data saved by the older app version (file page) is handed over once
         function importLegacyFromApp() {

@@ -1,5 +1,5 @@
 // offline copy of the app. The page itself is always fetched fresh when there is internet (so updates arrive at once).
-const CACHE = 'learnspace-2314ef3518';
+const CACHE = 'learnspace-58cf57eafa';
 const CORE = ['./', 'firebase-bundle.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
