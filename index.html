@@ -1278,6 +1278,11 @@
 
                 <!-- הגדרות לו"ז -->
                 <div id="tab-content-schedule" class="space-y-3 hidden">
+                    <div class="bg-sky-50/70 p-3 rounded-2xl border border-sky-100 space-y-2">
+                        <div class="flex items-center justify-between gap-2"><span class="text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar-plus text-sky-500"></i> ייבוא מ-Google Calendar</span>
+                            <label class="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold cursor-pointer transition flex-shrink-0">בחירת קובץ<input type="file" id="ics-file" accept=".ics,.zip,text/calendar,application/zip" multiple class="hidden" onchange="icsFilesChosen(this)"></label></div>
+                        <p class="text-[11px] opacity-70 leading-relaxed">במחשב: Google Calendar ← הגדרות ← ייבוא וייצוא ← <b>ייצוא</b>. מתקבל קובץ zip, ואותו בוחרים כאן (אפשר גם קובץ ‎.ics). מה שמיובא במחשב מגיע לטלפון בסנכרון.</p>
+                    </div>
                     <div class="bg-white/70 p-3 rounded-2xl border border-slate-200/80 space-y-2.5">
                         <div class="flex items-center justify-between gap-2"><label for="setting-ev-default-cat" class="text-xs font-bold">אירוע חדש נפתח כ:</label><select id="setting-ev-default-cat" onchange="saveEvDefaultCategory(this.value)" class="bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold"><option value="academic">אקדמי</option><option value="personal">אישי</option></select></div>
                         <label class="flex items-center justify-between gap-2 text-xs font-bold cursor-pointer"><span>להציג ביומן מטלות לפי תאריך ההגשה</span><input type="checkbox" id="setting-cal-tasks" onchange="saveCalShowTasks(this.checked)" class="w-4 h-4 accent-sky-500"></label>
@@ -2988,7 +2993,7 @@
             const r = e && e.recur && typeof e.recur === 'object' ? e.recur : null;
             if (r && ['daily', 'weekly', 'monthly', 'yearly'].includes(r.freq)) {
                 const days = Array.isArray(r.days) ? [...new Set(r.days.map(Number).filter(d => d >= 0 && d <= 6))].sort() : [];
-                return { freq: r.freq, interval: Math.max(1, Math.min(99, parseInt(r.interval, 10) || 1)), days: days.length ? days : null, monthMode: r.monthMode === 'nth' ? 'nth' : 'day', until: isIso(r.until) ? r.until : '', count: Math.max(0, Math.min(999, parseInt(r.count, 10) || 0)) };
+                return { freq: r.freq, interval: Math.max(1, Math.min(99, parseInt(r.interval, 10) || 1)), days: days.length ? days : null, monthMode: r.monthMode === 'nth' ? 'nth' : 'day', nth: [-1, 1, 2, 3, 4].includes(Number(r.nth)) ? Number(r.nth) : 0, until: isIso(r.until) ? r.until : '', count: Math.max(0, Math.min(999, parseInt(r.count, 10) || 0)) };
             }
             if (!isIso(e.date) && e.day !== undefined && e.day !== '' && !isNaN(Number(e.day))) return { freq: 'weekly', interval: 1, days: [Number(e.day)], monthMode: 'day', until: '', count: 0, legacy: true };
             return null;
@@ -3009,7 +3014,7 @@
             if (r.freq === 'monthly') {
                 const months = (Number(s.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(s.slice(5, 7)) - Number(a.slice(5, 7));
                 if (months % r.interval) return false;
-                if (r.monthMode === 'nth') { if (isoDow(s) !== isoDow(a)) return false; const n = nthOf(a); return n >= 5 ? isLastWd(s) : nthOf(s) === n; }
+                if (r.monthMode === 'nth') { if (isoDow(s) !== isoDow(a)) return false; const n = r.nth || (nthOf(a) >= 5 ? -1 : nthOf(a)); return n === -1 ? isLastWd(s) : nthOf(s) === n; }
                 return s.slice(8) === a.slice(8);
             }
             if (r.freq === 'yearly') return s.slice(5) === a.slice(5) && (Number(s.slice(0, 4)) - Number(a.slice(0, 4))) % r.interval === 0;
@@ -3053,7 +3058,7 @@
             let t;
             if (r.freq === 'daily') t = every(r.interval, 'כל יום', 'כל יומיים', 'ימים');
             else if (r.freq === 'weekly') t = `${every(r.interval, 'כל שבוע', 'כל שבועיים', 'שבועות')} ביום ${(r.days || (a ? [isoDow(a)] : [])).map(d => HE_DS[d] + "'").join(', ')}`;
-            else if (r.freq === 'monthly') t = `${every(r.interval, 'כל חודש', 'כל חודשיים', 'חודשים')} ${r.monthMode === 'nth' ? `ביום ${HE_DAYS[isoDow(a)]} ${HE_ORD[Math.min(5, nthOf(a))]} בחודש` : `ב-${Number(a.slice(8))} לחודש`}`;
+            else if (r.freq === 'monthly') t = `${every(r.interval, 'כל חודש', 'כל חודשיים', 'חודשים')} ${r.monthMode === 'nth' ? `ביום ${HE_DAYS[isoDow(a)]} ${HE_ORD[r.nth === -1 ? 5 : r.nth || Math.min(5, nthOf(a))]} בחודש` : `ב-${Number(a.slice(8))} לחודש`}`;
             else t = `${every(r.interval, 'כל שנה', 'כל שנתיים', 'שנים')} ב-${isoShort(a)}`;
             if (r.until) t += ` · עד ${formatDate(r.until)}`; else if (r.count) t += ` · ${r.count} פעמים`;
             return t;
@@ -3061,7 +3066,7 @@
         function evNextDate(e, from) { const f = from || isoToday(); for (let i = 0; i < 400; i++) { const d = isoAdd(f, i); if (evStartsOn(e, d)) return d; } return isIso(e.date) ? e.date : ''; }
 
         // ===== event form =====
-        let evForm = { days: new Set(), legacy: '' };
+        let evForm = { days: new Set(), legacy: '', single: null };
         function evVal(id) { const el = document.getElementById(id); return el ? el.value : ''; }
         function setEventCategory(cat, keepType) {
             const c = cat === 'personal' ? 'personal' : 'academic';
@@ -3111,7 +3116,7 @@
             const set = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; if (el.dataset.tp) el.dataset.last = v; } };
             const r = ev ? evRule(ev) : null;
             const date = ev ? (isIso(ev.date) ? ev.date : (occIso || evNextDate(ev))) : (occIso || calDate || isoToday());
-            evForm = { days: new Set(r && r.days ? r.days : []), legacy: ev && r && r.legacy ? date : '' };
+            evForm = { days: new Set(r && r.days ? r.days : []), legacy: ev && r && r.legacy ? date : '', single: null };
             set('edit-event-id', ev ? ev.id : ''); set('event-title', ev ? ev.title || '' : ''); set('event-location', ev ? ev.location || '' : '');
             set('event-date', date); set('event-end-date', ev && isIso(ev.endDate) ? ev.endDate : date);
             set('event-start-time', ev ? ev.startTime || '' : ''); set('event-end-time', ev ? ev.endTime || '' : '');
@@ -3146,20 +3151,38 @@
             // an older weekly event whose start date was not touched keeps repeating also backwards (no start date)
             const keepOpen = evForm.legacy && date === evForm.legacy && recur && recur.freq === 'weekly' && recur.interval === 1 && !endDate;
             if (keepOpen) { evData.date = ''; evData.day = String(recur.days[0]); }
-            if (id) {
+            const single = evForm.single;
+            if (single) {   // only this time: the series skips that day, and a separate one-time event takes its place
+                const series = state.events.find(x => x.id === single.seriesId);
+                if (series) { series.exdates = [...new Set([...(series.exdates || []), single.iso])].sort(); touch(series); }
+                state.events.push({ id: newId('e'), ...evData, recur: null, seriesId: single.seriesId, origDate: single.iso, workspaceId: series ? series.workspaceId : wsForNewItem(''), updatedAt: Date.now() });
+            } else if (id) {
                 const ev = state.events.find(x => x.id === id);
                 if (ev) { Object.assign(ev, evData); if (!keepOpen) delete ev.day; if (!recur) delete ev.exdates; touch(ev); }
             } else state.events.push({ id: newId('e'), ...evData, workspaceId: wsForNewItem(''), updatedAt: Date.now() });
             saveState(); calDate = keepOpen ? evNextDate(evData) || date : date; renderAll(); cancelEventEdit();
             showToast(id ? 'האירוע עודכן' : 'האירוע נשמר', 'success');
         }
-        function openEditEventModal(id, occIso) {
+        function openEditEventModal(id, occIso, mode) {
             const ev = state.events.find(e => e.id === id); if (!ev) return;
+            if (!mode && isIso(occIso) && evRule(ev)) {   // a repeating event: this time only, or the whole series?
+                evChoice('עריכת אירוע חוזר', `"${ev.title}" חוזר ${evRecurLabel(ev)}.`, [
+                    { label: `רק ב-${isoLong(occIso).replace('יום ', '')}`, cls: 'bg-sky-500 text-white hover:bg-sky-600', run: () => openEditEventModal(id, occIso, 'one') },
+                    { label: 'את כל הסדרה', cls: 'bg-white text-sky-700 border border-sky-200 hover:bg-sky-50', run: () => openEditEventModal(id, occIso, 'all') },
+                    { label: 'ביטול', cls: 'bg-slate-200 text-slate-700 hover:bg-slate-300' }]);
+                return;
+            }
             if (activeTab !== 'schedule') switchMainTab('schedule');
             evFormFill(ev, isIso(occIso) ? occIso : '');
+            if (mode === 'one') {
+                const span = evSpan(ev), set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v; };
+                set('event-date', occIso); set('event-end-date', isoAdd(occIso, span)); set('event-recur', ''); set('edit-event-id', '');
+                evForm.single = { seriesId: id, iso: occIso }; evForm.legacy = ''; evFormSync();
+            }
             const rem = ev.reminder || { mode: 'default', offsets: [...(state.notificationSettings.eventsOffsets || [30])] };
             formRemState.event = { mode: rem.mode || 'default', offsets: Array.isArray(rem.offsets) ? [...rem.offsets] : [30] };
             setItemReminderMode('event', formRemState.event.mode); renderItemOffsetButtons('event'); toggleEventAccordion(true); setFormMode('event', true); revealForm('event');
+            if (mode === 'one') { const t = document.getElementById('event-form-title'); if (t) t.textContent = `עריכת המופע ב-${isoShort(occIso)} בלבד`; }
         }
         function cancelEventEdit() { evFormFill(null); setFormMode('event', false); toggleEventAccordion(); }
         function openNewEventForm(iso) {
@@ -3193,8 +3216,10 @@
         }
         function deleteEvent(id) {
             const idx = state.events.findIndex(x => x.id === id); if (idx < 0) return;
-            const e = state.events.splice(idx, 1)[0]; addTombstone(id, 'event'); saveState(); renderAll();
-            showUndoToast(`"${e.title || 'האירוע'}" נמחק`, () => { revive(e); restoreAt(state.events, idx, e); });
+            const e = state.events.splice(idx, 1)[0]; addTombstone(id, 'event');
+            const kids = state.events.filter(x => x.seriesId === id); kids.forEach(k => { state.events.splice(state.events.indexOf(k), 1); addTombstone(k.id, 'event'); });
+            saveState(); renderAll();
+            showUndoToast(`"${e.title || 'האירוע'}" נמחק${kids.length ? ` (כולל ${kids.length} מופעים ששונו)` : ''}`, () => { revive(e); restoreAt(state.events, idx, e); kids.forEach(k => { revive(k); state.events.push(k); }); });
         }
 
         // ===== calendar (לו"ז tab): day / week / month =====
@@ -3214,7 +3239,7 @@
             const { e, iso } = it, col = evColor(e), tl = evTypeLabel(e.type), rec = evRecurLabel(e);
             return `<div class="glass-card rounded-2xl p-3.5 pr-5 flex items-center justify-between gap-3 relative overflow-hidden"><span class="absolute right-0 inset-y-0 w-1.5" style="background:${col}"></span>
                 <div class="min-w-0"><h4 class="text-sm font-bold truncate">${escapeHtml(e.title)}</h4>${tl ? `<div class="text-[11px] font-semibold opacity-60 mt-0.5">${escapeHtml(tl)}</div>` : ''}<div class="text-xs opacity-70 mt-1">${evTimeHtml(it)}</div>
-                ${e.location ? `<div class="text-[11px] opacity-60 mt-0.5 truncate"><i class="fa-solid fa-location-dot ml-1"></i>${escapeHtml(e.location)}</div>` : ''}${rec ? `<div class="text-[10px] opacity-50 mt-0.5"><i class="fa-solid fa-repeat ml-1"></i>${escapeHtml(rec)}</div>` : ''}</div>
+                ${e.location ? `<div class="text-[11px] opacity-60 mt-0.5 truncate"><i class="fa-solid fa-location-dot ml-1"></i>${escapeHtml(e.location)}</div>` : ''}${rec ? `<div class="text-[10px] opacity-50 mt-0.5"><i class="fa-solid fa-repeat ml-1"></i>${escapeHtml(rec)}</div>` : e.seriesId ? `<div class="text-[10px] opacity-50 mt-0.5"><i class="fa-solid fa-repeat ml-1"></i>שונה רק הפעם${isIso(e.origDate) && e.origDate !== it.iso ? ` (במקום ${isoShort(e.origDate)})` : ''}</div>` : ''}</div>
                 <div class="flex items-center gap-1 flex-shrink-0"><button onclick="openEditEventModal('${e.id}', '${iso}')" class="p-2.5 min-w-[2.75rem] min-h-[2.75rem] flex items-center justify-center opacity-60 hover:opacity-100" aria-label="ערוך"><i class="fa-solid fa-pen text-sm"></i></button><button onclick="evDeleteAsk('${e.id}', '${iso}')" class="p-2.5 min-w-[2.75rem] min-h-[2.75rem] flex items-center justify-center opacity-60 hover:opacity-100 text-rose-500" aria-label="מחק"><i class="fa-solid fa-trash-can text-sm"></i></button></div></div>`;
         }
         const calTaskLine = t => `<button type="button" onclick="srchGo('task', '${t.id}')" class="w-full text-right flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] text-slate-500 hover:bg-white/70 transition"><i class="fa-solid fa-thumbtack text-[10px] opacity-60"></i><span class="truncate">להגשה: ${escapeHtml(t.name)}</span>${t.dueTime ? `<bdi dir="ltr" class="opacity-70">${t.dueTime}</bdi>` : ''}</button>`;
@@ -3446,6 +3471,176 @@
             pill.addEventListener('pointerdown', start); ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => pill.addEventListener(t, stop));
             pill.addEventListener('contextmenu', e => { e.preventDefault(); stop(); tickerLongPressed = true; openSettingsAt('preferences', 'radar'); });
             pill.addEventListener('click', e => { if (tickerLongPressed) { tickerLongPressed = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+        }
+
+
+        // ===== Import from Google Calendar (or any calendar): .ics files, or the .zip Google gives you =====
+        let icsPending = null;
+        const ICS_DAYS = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+        function icsUnfold(text) { return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n[ \t]/g, '').split('\n'); }
+        function icsUnescape(v) { return String(v || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1').trim(); }
+        function icsTzOffset(tz, ms) {
+            const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const p = {}; f.formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; });
+            return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - ms) / 60000);
+        }
+        // a calendar time value → { date, time } on this device (all-day values have no time)
+        function icsTime(value, params) {
+            const v = String(value || '').trim(), m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/); if (!m) return null;
+            const [, y, mo, d, h, mi, se, z] = m;
+            if (h === undefined || /VALUE=DATE(?!-)/.test(params || '')) return { date: `${y}-${mo}-${d}`, time: '', allDay: true };
+            let dt;
+            if (z) dt = new Date(Date.UTC(+y, mo - 1, +d, +h, +mi, +(se || 0)));
+            else {
+                const tz = ((params || '').match(/TZID=([^;:]+)/) || [])[1];
+                if (tz) { try { const g = Date.UTC(+y, mo - 1, +d, +h, +mi, +(se || 0)); let t = g - icsTzOffset(tz, g) * 60000; t = g - icsTzOffset(tz, t) * 60000; dt = new Date(t); } catch (e) { dt = null; } }
+                if (!dt) dt = new Date(+y, mo - 1, +d, +h, +mi, +(se || 0));
+            }
+            return { date: localIso(dt), time: `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`, allDay: false };
+        }
+        function icsRule(rrule, start) {   // RRULE → the app's repeat rule, or null when it cannot be expressed (then only the first time is kept)
+            const p = {}; String(rrule || '').split(';').forEach(kv => { const [k, v] = kv.split('='); if (k) p[k.toUpperCase()] = v || ''; });
+            const freq = { DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly', YEARLY: 'yearly' }[p.FREQ]; if (!freq) return null;
+            if (p.BYSETPOS || p.BYHOUR || p.BYMINUTE || p.BYYEARDAY || p.BYWEEKNO) return null;
+            const r = { freq, interval: Math.max(1, parseInt(p.INTERVAL, 10) || 1) };
+            const byday = (p.BYDAY || '').split(',').filter(Boolean);
+            if (freq === 'weekly') { const ds = byday.map(b => ICS_DAYS[b.replace(/^[-+]?\d+/, '')]).filter(d => d !== undefined); if (ds.length) r.days = [...new Set(ds)].sort(); }
+            else if (freq === 'monthly') {
+                if (byday.length > 1 || (p.BYMONTHDAY && p.BYMONTHDAY.includes(','))) return null;
+                if (byday.length) { const mm = byday[0].match(/^([-+]?\d)?([A-Z]{2})$/); if (!mm || ICS_DAYS[mm[2]] !== isoDow(start)) return null; r.monthMode = 'nth'; const n = parseInt(mm[1] || String(nthOf(start)), 10); r.nth = n < 0 ? -1 : Math.min(4, n); }
+                else if (p.BYMONTHDAY && Number(p.BYMONTHDAY) !== Number(start.slice(8))) return null;
+            } else if (freq === 'daily' && byday.length) return null;
+            else if (freq === 'yearly' && (byday.length || (p.BYMONTH && p.BYMONTH.includes(',')))) return null;
+            if (p.COUNT) r.count = Math.max(1, parseInt(p.COUNT, 10) || 1);
+            if (p.UNTIL) { const u = icsTime(p.UNTIL, /T/.test(p.UNTIL) ? '' : 'VALUE=DATE'); if (u) r.until = u.date; }
+            return r;
+        }
+        function icsParse(text, fileName) {
+            const lines = icsUnfold(text); let cal = '', cur = null, depth = 0; const items = [];
+            lines.forEach(line => {
+                if (/^BEGIN:VEVENT/i.test(line)) { cur = { ex: [] }; depth = 0; return; }
+                if (/^END:VEVENT/i.test(line)) { if (cur) items.push(cur); cur = null; return; }
+                if (cur && /^BEGIN:/i.test(line)) { depth++; return; }     // VALARM etc.
+                if (cur && /^END:/i.test(line)) { depth--; return; }
+                const i = line.indexOf(':'); if (i < 0) return;
+                const head = line.slice(0, i), val = line.slice(i + 1), name = head.split(';')[0].toUpperCase(), params = head.slice(name.length + 1).toUpperCase();
+                if (!cur) { if (name === 'X-WR-CALNAME') cal = icsUnescape(val); return; }
+                if (depth > 0) return;
+                if (name === 'EXDATE') val.split(',').forEach(x => cur.ex.push([x, params]));
+                else cur[name] = [val, params];
+            });
+            return { name: cal || String(fileName || 'יומן').replace(/\.ics$/i, ''), items };
+        }
+        // one calendar → events in the app's shape (+ how many were skipped and why)
+        function icsToEvents(parsed, opts) {
+            const today = localIso(new Date()), out = [], masters = {}, overrides = [], stats = { total: 0, past: 0, unsupported: 0, existing: 0, cancelled: 0 };
+            const known = new Set(state.events.map(e => e.icsUid).filter(Boolean));
+            parsed.items.forEach(it => {
+                if (!it.DTSTART) return;
+                stats.total++;
+                const st = icsTime(it.DTSTART[0], it.DTSTART[1]); if (!st) return;
+                let en = it.DTEND ? icsTime(it.DTEND[0], it.DTEND[1]) : null;
+                const uid = (it.UID ? it.UID[0] : '') || `${st.date}|${it.SUMMARY ? it.SUMMARY[0] : ''}`;
+                if (it['RECURRENCE-ID']) { overrides.push({ it, st, en, uid, rid: icsTime(it['RECURRENCE-ID'][0], it['RECURRENCE-ID'][1]) }); return; }
+                if (it.STATUS && /CANCELLED/i.test(it.STATUS[0])) { stats.cancelled++; return; }
+                let endDate = '';
+                if (st.allDay) { if (en && en.allDay) { const last = isoAdd(en.date, -1); if (last > st.date) endDate = last; } }
+                else if (en && en.date > st.date) endDate = en.date;
+                const e = { id: newId('e'), icsUid: uid, title: icsUnescape(it.SUMMARY ? it.SUMMARY[0] : '') || 'אירוע', category: opts.category, type: '', date: st.date, endDate, allDay: st.allDay,
+                    startTime: st.allDay ? '' : st.time, endTime: st.allDay || !en ? '' : en.time, location: icsUnescape(it.LOCATION ? it.LOCATION[0] : ''), reminder: { mode: 'default', offsets: [...((state.notificationSettings || {}).eventsOffsets || [30])] }, recur: null, updatedAt: Date.now() };
+                if (it.RRULE) { const r = icsRule(it.RRULE[0], st.date); if (r) e.recur = r; else stats.unsupported++; }
+                const ex = it.ex.map(([v, p]) => (icsTime(v, p) || {}).date).filter(Boolean); if (ex.length && e.recur) e.exdates = [...new Set(ex)].sort();
+                masters[uid] = e; out.push(e);
+            });
+            overrides.forEach(o => {   // one changed / cancelled time inside a series
+                const m = masters[o.uid]; if (m && o.rid) m.exdates = [...new Set([...(m.exdates || []), o.rid.date])].sort();
+                if (o.it.STATUS && /CANCELLED/i.test(o.it.STATUS[0])) return;
+                const en = o.en, e = { id: newId('e'), icsUid: `${o.uid}|${o.rid ? o.rid.date : o.st.date}`, title: icsUnescape(o.it.SUMMARY ? o.it.SUMMARY[0] : '') || (m ? m.title : 'אירוע'), category: opts.category, type: '', date: o.st.date,
+                    endDate: '', allDay: o.st.allDay, startTime: o.st.allDay ? '' : o.st.time, endTime: o.st.allDay || !en ? '' : en.time, location: icsUnescape(o.it.LOCATION ? o.it.LOCATION[0] : '') || (m ? m.location : ''), reminder: m ? m.reminder : { mode: 'default', offsets: [30] }, recur: null, updatedAt: Date.now() };
+                if (m) { e.seriesId = m.id; if (o.rid) e.origDate = o.rid.date; }
+                out.push(e);
+            });
+            const keep = out.filter(e => {
+                if (known.has(e.icsUid)) { stats.existing++; return false; }
+                if (!opts.fromToday) return true;
+                const r = evRule(e);
+                const last = !r ? (e.endDate || e.date) : r.count ? evCountEnd(e, r) : r.until || '9999-12-31';
+                if (last < today) { stats.past++; return false; }
+                return true;
+            });
+            // a changed time whose series was skipped keeps no link to it
+            const ids = new Set(keep.map(e => e.id)); keep.forEach(e => { if (e.seriesId && !ids.has(e.seriesId)) { delete e.seriesId; delete e.origDate; } });
+            return { events: keep, stats };
+        }
+        async function icsUnzip(buf) {
+            const dv = new DataView(buf); let eocd = -1;
+            for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+            if (eocd < 0) throw new Error('zip');
+            const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true); const out = [];
+            for (let k = 0; k < n; k++) {
+                if (dv.getUint32(p, true) !== 0x02014b50) break;
+                const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), lho = dv.getUint32(p + 42, true);
+                const name = new TextDecoder().decode(new Uint8Array(buf, p + 46, nlen)); p += 46 + nlen + elen + clen;
+                if (!/\.ics$/i.test(name)) continue;
+                const data = new Uint8Array(buf, lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true), csize);
+                let bytes = null;
+                if (method === 0) bytes = data;
+                else if (method === 8 && typeof DecompressionStream === 'function') bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+                if (bytes) out.push({ name: name.split('/').pop(), text: new TextDecoder().decode(bytes) });
+            }
+            return out;
+        }
+        async function icsFilesChosen(input) {
+            const files = [...(input.files || [])]; try { input.value = ''; } catch (e) {}
+            if (!files.length) return;
+            const texts = [];
+            try {
+                for (const f of files) {
+                    if (/\.zip$/i.test(f.name) || f.type === 'application/zip') texts.push(...await icsUnzip(await f.arrayBuffer()));
+                    else texts.push({ name: f.name, text: await f.text() });
+                }
+            } catch (e) { showToast('לא הצלחתי לפתוח את הקובץ. אפשר לחלץ את קובצי ה-‎.ics מה-zip ולבחור אותם', 'error'); return; }
+            icsOpenPreview(texts);
+        }
+        function icsOpenPreview(texts) {
+            const cals = texts.map(t => icsParse(t.text, t.name)).filter(c => c.items.length);
+            if (!cals.length) { showToast('לא נמצאו אירועים בקובץ', 'error'); return; }
+            icsPending = { cals: cals.map(c => ({ ...c, on: !/holiday|חגים|birthday|ימי הולדת/i.test(c.name), category: /לימוד|אוניברסיט|קורס|סמסטר|מבחנ|course|class|exam|uni/i.test(c.name) ? 'academic' : 'personal' })), fromToday: true };
+            icsRender();
+        }
+        function icsCompute() { return icsPending.cals.map(c => ({ c, r: icsToEvents(c, { category: c.category, fromToday: icsPending.fromToday }) })); }
+        function icsRender() {
+            let m = document.getElementById('ics-modal');
+            if (!m) { m = document.createElement('div'); m.id = 'ics-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.className = 'fixed inset-0 z-[125] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4'; document.body.appendChild(m); }
+            const res = icsCompute(), total = res.reduce((a, x) => a + (x.c.on ? x.r.events.length : 0), 0);
+            const rows = res.map((x, i) => {
+                const s = x.r.stats, rec = x.r.events.filter(e => e.recur).length;
+                const notes = [s.past ? `${s.past} שכבר עברו` : '', s.existing ? `${s.existing} כבר קיימים` : '', s.unsupported ? `${s.unsupported} חוזרים בדפוס מיוחד: רק הפעם הראשונה` : ''].filter(Boolean).join(' · ');
+                return `<div class="rounded-2xl border ${x.c.on ? 'border-sky-200 bg-white/80' : 'border-slate-200 bg-white/40 opacity-70'} p-3 space-y-2">
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${x.c.on ? 'checked' : ''} onchange="icsPending.cals[${i}].on = this.checked; icsRender()" class="w-4 h-4 accent-sky-500"><span class="text-sm font-bold flex-1 min-w-0 truncate" dir="auto">${escapeHtml(x.c.name)}</span><span class="text-[11px] font-bold text-sky-700 flex-shrink-0">${x.r.events.length} אירועים${rec ? ` (${rec} חוזרים)` : ''}</span></label>
+                    ${notes ? `<p class="text-[10px] opacity-60">${notes}</p>` : ''}
+                    <div class="flex bg-slate-100 p-0.5 rounded-xl text-[11px] font-bold w-fit">${['academic', 'personal'].map(k => `<button type="button" onclick="icsPending.cals[${i}].category='${k}'; icsRender()" class="px-3 py-1 rounded-lg transition ${x.c.category === k ? 'bg-white shadow-xs ' + (k === 'academic' ? 'text-sky-600' : 'text-violet-600') : 'text-slate-500'}">${k === 'academic' ? 'אקדמי' : 'אישי'}</button>`).join('')}</div></div>`;
+            }).join('');
+            m.innerHTML = `<div class="glass-modal rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-200/60 flex items-center gap-3 flex-shrink-0"><div class="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-calendar-plus"></i></div><div><h3 class="text-base font-bold">ייבוא יומן</h3><p class="text-[11px] opacity-70">בחר אילו יומנים לייבא ולאיזה סיווג</p></div></div>
+                <div class="p-4 overflow-y-auto custom-scrollbar flex-grow min-h-0 space-y-2.5">
+                    <label class="flex items-center justify-between gap-2 text-xs font-bold bg-white/70 rounded-2xl border border-slate-200 px-3 py-2.5 cursor-pointer"><span>רק אירועים מהיום והלאה</span><input type="checkbox" id="ics-from-today" ${icsPending.fromToday ? 'checked' : ''} onchange="icsPending.fromToday = this.checked; icsRender()" class="w-4 h-4 accent-sky-500"></label>
+                    ${rows}
+                    <p class="text-[10px] opacity-60 leading-relaxed">האירועים נוספים לנתונים הקיימים ולא מחליפים אותם. ייבוא חוזר של אותו קובץ לא יוצר כפילויות. לפני הייבוא נשמר גיבוי.${total > 600 ? ' <b class="text-amber-700">יש הרבה אירועים: כדאי להשאיר "רק מהיום והלאה", כי הסנכרון מוגבל בגודל.</b>' : ''}</p>
+                </div>
+                <div class="px-5 py-3 border-t border-slate-200/60 bg-white/50 flex justify-end gap-2 flex-shrink-0"><button type="button" onclick="icsClose()" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 transition">ביטול</button><button type="button" id="ics-import-btn" onclick="icsApply()" ${total ? '' : 'disabled'} class="px-4 py-2 rounded-xl text-xs font-bold bg-sky-500 text-white hover:bg-sky-600 shadow-sm transition disabled:opacity-50">ייבוא ${total} אירועים</button></div></div>`;
+            m.classList.remove('hidden');
+        }
+        function icsClose() { icsPending = null; const m = document.getElementById('ics-modal'); if (m) m.classList.add('hidden'); }
+        function icsApply() {
+            if (!icsPending) return;
+            const add = icsCompute().filter(x => x.c.on).flatMap(x => x.r.events); if (!add.length) { icsClose(); return; }
+            createBackup('before-import', true);
+            const ws = wsForNewItem(''); add.forEach(e => state.events.push({ ...e, workspaceId: ws }));
+            icsClose(); saveState(); renderAll();
+            const first = add.map(e => evNextDate(e)).filter(Boolean).sort()[0];
+            if (first) calDate = first;
+            showToast(`יובאו ${add.length} אירועים. גיבוי של המצב הקודם נשמר`, 'success');
         }
 
         function renderReminderStatus() {
