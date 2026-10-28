@@ -4070,12 +4070,7 @@
             }
 
             let filtered = wsTasks().filter(t => (currentTaskFilter==='all'?true : currentTaskFilter==='pending'?!t.completed : t.completed) && (currentCourseFilter==='all'?true : t.courseId===currentCourseFilter));
-            filtered.sort((a,b) => {
-                if(state.sortPrimary==='dueDate') return (a.dueDate||'9').localeCompare(b.dueDate||'9');
-                if(state.sortPrimary==='course') return (a.courseId||'').localeCompare(b.courseId||'');
-                if(state.sortPrimary==='type') return (a.typeId||'').localeCompare(b.typeId||'');
-                return (a.priority==='high'?-1:(a.priority==='low'?1:0)); // priority
-            });
+            filtered.sort(taskCompare);
 
             cText.innerText = `${filtered.length} משימות`;
             if(filtered.length===0) { container.innerHTML = `<p class="text-center opacity-50 py-10">אין משימות מתאימות.</p>`; return; }
@@ -4149,6 +4144,20 @@
             renderTasks();
         }
         function setCourseFilter(c) { currentCourseFilter = c; renderTasks(); }
+        // high → normal → low; within the same level the nearest due date first (no date last), then by name
+        const PRIO_RANK = { high: 0, normal: 1, low: 2 };
+        function taskCompare(a, b) {
+            const due = (x, y) => (x.dueDate || '9999-99-99').localeCompare(y.dueDate || '9999-99-99') || (x.dueTime || '99:99').localeCompare(y.dueTime || '99:99');
+            const name = (x, y) => String(x.name || '').localeCompare(String(y.name || ''), 'he');
+            const prio = (x, y) => (PRIO_RANK[x.priority] ?? 1) - (PRIO_RANK[y.priority] ?? 1);
+            const nm = (list, id) => ((list || []).find(z => z.id === id) || {}).name || '\uffff';
+            switch (state.sortPrimary) {
+                case 'dueDate': return due(a, b) || prio(a, b) || name(a, b);
+                case 'course': return nm(state.courses, a.courseId).localeCompare(nm(state.courses, b.courseId), 'he') || due(a, b) || prio(a, b);
+                case 'type': return nm(state.taskTypes, a.typeId).localeCompare(nm(state.taskTypes, b.typeId), 'he') || due(a, b) || prio(a, b);
+                default: return prio(a, b) || due(a, b) || name(a, b);
+            }
+        }
         function applySorting(v) { state.sortPrimary = v; saveState(); renderTasks(); }
 
         // --- 11. Generic Modals (UPDATED Design matches images) ---
