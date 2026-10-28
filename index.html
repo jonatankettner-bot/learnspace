@@ -2874,6 +2874,7 @@
             defaultEventTypes().forEach(d => { if (!s.eventTypes.some(t => t.id === d.id) && !s.tombstones[d.id]) s.eventTypes.push(d); });
         }
         let etEditingId = null;
+        const etOpen = new Set();   // which groups (academic / personal / unclassified) are unfolded; all folded at first, to save room
         const etById = id => (state.eventTypes || []).find(x => x.id === id);
         function etCat(t) { return t && (t.category === 'academic' || t.category === 'personal') ? t.category : ''; }
         // label under the event name; the built-in "אחר" says nothing, so it is not shown
@@ -2926,18 +2927,20 @@
             };
             const group = (cat, title, icon, color) => {
                 const list = (state.eventTypes || []).filter(t => etCat(t) === cat); if (!list.length && cat === '') return '';
-                return `<div class="space-y-1.5"><div class="text-[11px] font-bold flex items-center gap-1.5 pt-1" style="color:${color}"><i class="fa-solid ${icon}"></i> ${title} <span class="opacity-60 font-semibold">(${list.length})</span></div>${list.map(row).join('') || '<p class="text-[11px] opacity-50 pr-1">אין סוגים</p>'}</div>`;
+                const key = cat || 'none', open = etOpen.has(key) || list.some(t => t.id === etEditingId);
+                return `<div class="rounded-2xl border border-slate-200/80 bg-white/50 overflow-hidden"><button type="button" onclick="etToggleGroup('${key}')" aria-expanded="${open}" id="et-group-${key}" class="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-right hover:bg-white/70 transition"><span class="text-xs font-bold flex items-center gap-1.5" style="color:${color}"><i class="fa-solid ${icon}"></i> ${title} <span class="opacity-60 font-semibold">(${list.length})</span></span><i class="fa-solid fa-chevron-down text-[10px] opacity-50 transition-transform ${open ? 'rotate-180' : ''}"></i></button>${open ? `<div class="px-2 pb-2 space-y-1.5">${list.map(row).join('') || '<p class="text-[11px] opacity-50 pr-1 py-1">אין סוגים</p>'}</div>` : ''}</div>`;
             };
             box.innerHTML = group('academic', 'אקדמי', 'fa-graduation-cap', EV_CATS.academic.color) + group('personal', 'אישי', 'fa-heart', EV_CATS.personal.color) + group('', 'ללא סיווג', 'fa-circle-question', '#64748b')
                 + `<div class="flex gap-2 pt-2"><input id="et-new-name" type="text" maxlength="40" placeholder="סוג חדש, למשל: סמינר" onkeydown="if(event.key==='Enter'){event.preventDefault();etAdd()}" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"><select id="et-new-cat" class="px-2 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs font-bold"><option value="academic">אקדמי</option><option value="personal">אישי</option><option value="">ללא סיווג</option></select><button type="button" onclick="etAdd()" class="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 flex-shrink-0"><i class="fa-solid fa-plus"></i> הוסף</button></div>`;
         }
+        function etToggleGroup(key) { if (etOpen.has(key)) etOpen.delete(key); else etOpen.add(key); renderEventTypesSettings(); }
         function etAfterChange() { saveState(); renderAll(); renderEventTypeOptions(); renderEventTypesSettings(); }
         function etAdd() {
             const inp = document.getElementById('et-new-name'); const name = (inp && inp.value || '').trim().slice(0, 40);
             const catEl = document.getElementById('et-new-cat'), category = catEl ? catEl.value : 'academic';
             if (!name) { showToast('כתוב שם לסוג החדש', 'info'); if (inp) inp.focus(); return; }
             if (state.eventTypes.some(t => t.name === name && etCat(t) === category)) { showToast('כבר קיים סוג בשם הזה', 'info'); return; }
-            state.eventTypes.push({ id: newId('et'), name, category, color: '', updatedAt: Date.now() }); etAfterChange();
+            state.eventTypes.push({ id: newId('et'), name, category, color: '', updatedAt: Date.now() }); etOpen.add(category || 'none'); etAfterChange();
             showToast(`נוסף הסוג "${name}"`, 'success');
         }
         function etStartRename(id) { etEditingId = id; renderEventTypesSettings(); const el = document.getElementById('et-rename-input'); if (el) { el.focus(); el.select(); } }
@@ -2954,7 +2957,7 @@
             if (!t) { renderEventTypesSettings(); return; }
             if (name && name !== t.name && state.eventTypes.some(x => x.id !== id && x.name === name && etCat(x) === category)) { showToast('כבר קיים סוג בשם הזה', 'info'); renderEventTypesSettings(); return; }
             const next = { name: name || t.name, category, color };
-            if (next.name !== t.name || next.category !== etCat(t) || next.color !== (t.color || '')) { Object.assign(t, next); touch(t); etAfterChange(); }
+            if (next.name !== t.name || next.category !== etCat(t) || next.color !== (t.color || '')) { Object.assign(t, next); touch(t); etOpen.add(category || 'none'); etAfterChange(); }
             else renderEventTypesSettings();
         }
         function etDelete(id) {
@@ -3312,11 +3315,6 @@
                 html += `<div class="glass-card rounded-3xl p-4 mt-4"><h3 class="font-bold text-sm flex items-center justify-between gap-2 mb-2"><span class="flex items-center gap-2"><i class="fa-solid fa-forward text-violet-500"></i> מחר · יום ${HE_DAYS[isoDow(tom)]}</span><button type="button" onclick="selectMonthDay('${tom}')" class="text-[11px] font-bold text-sky-600 hover:underline">ביומן</button></h3>${lines.join('') || '<p class="text-xs opacity-60">אין כלום מתוכנן למחר.</p>'}</div>`;
             }
             container.innerHTML = html;
-        }
-        function saveTodayShow() {
-            const g = id => { const el = document.getElementById(id); return el ? el.checked : true; };
-            state.todayShow = { events: g('today-show-events'), tasks: g('today-show-tasks'), habits: g('today-show-habits'), tomorrow: g('today-show-tomorrow') };
-            saveState(); renderDashboard();
         }
         function saveRadarSort(v) { state.radarSort = v === 'priority' ? 'priority' : 'date'; saveState(); updateRadar(); }
         function saveTickerSpeed(v) { state.tickerSpeed = ['slow', 'normal', 'fast'].includes(v) ? v : 'normal'; saveState(); renderMiniRadarMarquee(); }
