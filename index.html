@@ -1090,10 +1090,15 @@
                 <button type="button" onclick="resetAllHabitsToday()" class="self-start sm:self-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/70 border border-slate-200 text-[11px] font-bold text-slate-600 hover:bg-white transition"><i class="fa-solid fa-rotate-left"></i> איפוס סימוני היום</button>
             </div>
             <div id="habit-day-bar" class="flex flex-wrap items-center gap-2 mb-3">
-                <div class="flex bg-slate-100/80 p-1 rounded-xl gap-1" role="group" aria-label="לאיזה יום לסמן">
-                    <button type="button" id="habit-day-t" onclick="setHabitMarkDay(0)" aria-pressed="true">היום</button>
-                    <button type="button" id="habit-day-y" onclick="setHabitMarkDay(-1)" aria-pressed="false">אתמול</button>
+                <div class="flex items-center gap-1 bg-white/70 border border-slate-200 p-1 rounded-2xl shadow-sm" role="group" aria-label="לאיזה יום לסמן">
+                    <button type="button" id="habit-day-prev" onclick="habitMarkStep(-1)" aria-label="יום קודם" title="יום קודם" class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 transition"><i class="fa-solid fa-chevron-right text-xs"></i></button>
+                    <label class="relative px-2 py-1.5 rounded-xl hover:bg-slate-50 cursor-pointer text-sm font-bold whitespace-nowrap" title="בחירת תאריך">
+                        <span id="habit-day-label">היום</span>
+                        <input type="date" id="habit-day-input" aria-label="בחירת תאריך לסימון" onclick="try{this.showPicker()}catch(e){}" onchange="setHabitMarkDate(this.value)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                    </label>
+                    <button type="button" id="habit-day-next" onclick="habitMarkStep(1)" aria-label="יום הבא" title="יום הבא" class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 transition"><i class="fa-solid fa-chevron-left text-xs"></i></button>
                 </div>
+                <button type="button" id="habit-day-today" onclick="setHabitMarkDate('')" class="hidden px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-bold hover:bg-indigo-100 transition">חזרה להיום</button>
                 <span id="habit-day-hint" class="hidden"></span>
             </div>
             <div id="habits-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
@@ -2209,8 +2214,8 @@
             const handle = e.currentTarget || e.target, li = handle && handle.closest ? handle.closest('li') : null; if (!li) return;
             e.preventDefault();
             try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-            stDrag = { i, li, handle, pid: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, touch: e.pointerType !== 'mouse', timer: null, group: [], ind0: [] };
-            handle.classList.add('t-grip-on');
+            stDrag = { i, li, handle, pid: e.pointerId, x0: e.clientX, y0: e.clientY, lastY: e.clientY, active: false, touch: e.pointerType !== 'mouse', timer: null, group: [], ind0: [] };
+            handle.classList.add('t-grip-on'); dragLockStart();
             if (stDrag.touch) { li.classList.add('bg-indigo-50/70', 'st-pressing'); stDrag.timer = setTimeout(stDragStart, ST_LONGPRESS_MS); }
             window.addEventListener('pointermove', stGripMove, { passive: false }); window.addEventListener('pointerup', stGripUp); window.addEventListener('pointercancel', stGripUp);
         }
@@ -2227,21 +2232,33 @@
             // the block floats under the finger (like task cards); neighbours glide out of the way
             d.box = box; box.classList.add('st-dragging');
             if (getComputedStyle(box).position === 'static') { box.style.position = 'relative'; d.boxPos = true; }
-            d.grab = d.y0 - d.li.getBoundingClientRect().top; d.ty = 0; d.lastY = d.y0;
+            d.grab = d.lastY - d.li.getBoundingClientRect().top; d.ty = 0;   // measured now: if anything moved since the press, the row does not jump
             try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
         }
         function stGripMove(e) {
             const d = stDrag; if (!d || e.pointerId !== d.pid) return;
-            const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+            const dx = e.clientX - d.x0, dy = e.clientY - d.y0; d.lastY = e.clientY;
             if (!d.active) {
                 if (d.touch) { if (Math.hypot(dx, dy) > 10) stDragCancel(); return; } // moved before the long-press finished
                 if (Math.hypot(dx, dy) < 4) return; stDragStart();
             }
             e.preventDefault();
-            const box = document.getElementById('task-subtasks-list'), first = d.group[0], last = d.group[d.group.length - 1];
+            stPlace(e.clientY);
+            // sideways = depth, one level per ~26px (RTL: dragging left goes deeper); the block keeps its inner shape
+            const first = d.group[0], prv = first.previousElementSibling;
+            const maxFirst = prv ? Math.min(+prv.dataset.indent + 1, ST_MAX_INDENT - d.span) : 0;
+            const want = d.ind0[0] + Math.trunc(-dx / ST_INDENT_PX);
+            const newFirst = Math.max(0, Math.min(want, Math.max(0, maxFirst)));
+            const delta = newFirst - d.ind0[0];
+            d.group.forEach((el, k) => { const v = Math.max(0, d.ind0[k] + delta); el.dataset.indent = String(v); el.style.marginInlineStart = v ? (v * ST_INDENT_REM).toFixed(2) + 'rem' : ''; });
+        }
+        // the finger at clientY: neighbours glide past the block, and the block stays under the finger
+        function stPlace(clientY) {
+            const d = stDrag; if (!d || !d.active) return; d.lastY = clientY;
+            const box = d.box, first = d.group[0], last = d.group[d.group.length - 1];
             // the dragged rows never leave the DOM (keeps pointer tracking); neighbours glide over them instead.
             // Layout positions (offsetTop) are used, so rows that are still gliding do not confuse it.
-            const y = e.clientY - box.getBoundingClientRect().top - box.clientTop + box.scrollTop, top = y - d.grab;   // where the first dragged row should be
+            const y = clientY - box.getBoundingClientRect().top - box.clientTop + box.scrollTop, top = y - d.grab;   // where the first dragged row should be
             const blockH = last.offsetTop + last.offsetHeight - first.offsetTop;
             for (let guard = 0; guard < 60; guard++) {
                 const nxt = last.nextElementSibling, prv = first.previousElementSibling;
@@ -2251,19 +2268,13 @@
             }
             d.ty = top - first.offsetTop;
             d.group.forEach(el => { el.style.transform = `translateY(${d.ty}px) scale(1.02)`; });
-            // sideways = depth, one level per ~26px (RTL: dragging left goes deeper); the block keeps its inner shape
-            const prv = first.previousElementSibling;
-            const maxFirst = prv ? Math.min(+prv.dataset.indent + 1, ST_MAX_INDENT - d.span) : 0;
-            const want = d.ind0[0] + Math.trunc(-dx / ST_INDENT_PX);
-            const newFirst = Math.max(0, Math.min(want, Math.max(0, maxFirst)));
-            const delta = newFirst - d.ind0[0];
-            d.group.forEach((el, k) => { const v = Math.max(0, d.ind0[k] + delta); el.dataset.indent = String(v); el.style.marginInlineStart = v ? (v * ST_INDENT_REM).toFixed(2) + 'rem' : ''; });
         }
         function stDragCancel() {
             const d = stDrag; if (!d) return; clearTimeout(d.timer);
             d.li.classList.remove('bg-indigo-50/70', 'st-pressing'); if (d.handle) d.handle.classList.remove('t-grip-on');
             d.group.forEach(el => { el.classList.remove('st-lifted'); el.style.transform = ''; });
             if (d.box) { d.box.classList.remove('st-dragging'); if (d.boxPos) d.box.style.position = ''; [...d.box.children].forEach(el => { el.style.transform = ''; el.style.transition = ''; }); }
+            dragLockEnd();
             window.removeEventListener('pointermove', stGripMove); window.removeEventListener('pointerup', stGripUp); window.removeEventListener('pointercancel', stGripUp);
             stDrag = null; document.body.classList.remove('select-none');
         }
@@ -4028,7 +4039,7 @@
             e.preventDefault();
             try { handle.setPointerCapture(e.pointerId); } catch (err) {}
             tDrag = { id, card, pid: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, touch: e.pointerType !== 'mouse', timer: null };
-            handle.classList.add('t-grip-on'); tDrag.handle = handle;
+            handle.classList.add('t-grip-on'); tDrag.handle = handle; dragLockStart();
             if (tDrag.touch) { card.classList.add('ring-2', 'ring-indigo-200', 't-pressing'); tDrag.timer = setTimeout(tDragStart, T_HOLD_MS); }
             window.addEventListener('pointermove', tGripMove, { passive: false }); window.addEventListener('pointerup', tGripUp); window.addEventListener('pointercancel', tGripUp);
         }
@@ -4049,8 +4060,19 @@
             e.preventDefault();
             tDragPlace(e.clientY);
             // keep the dragged card on screen near the edges
-            if (e.clientY < 90) window.scrollBy(0, -12); else if (e.clientY > window.innerHeight - 90) window.scrollBy(0, 12);
+            if (e.clientY < 90) dragLockScrollBy(-12); else if (e.clientY > window.innerHeight - 90) dragLockScrollBy(12);
         }
+        // While a ⋮ handle is held the page must not scroll by itself (e.g. the phone bringing a focused text field back into view).
+        // A field that has the keyboard open is closed first, so the page settles before anything is lifted.
+        let dragLock = null;
+        function dragLockStart() {
+            try { const a = document.activeElement; if (a && a !== document.body && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) a.blur(); } catch (e) {}
+            dragLockEnd();
+            const lock = { y: window.scrollY, fn: () => { if (dragLock === lock && Math.abs(window.scrollY - lock.y) > 1) window.scrollTo(0, lock.y); } };
+            dragLock = lock; window.addEventListener('scroll', lock.fn, { passive: true });
+        }
+        function dragLockScrollBy(dy) { window.scrollBy(0, dy); if (dragLock) dragLock.y = window.scrollY; }
+        function dragLockEnd() { if (dragLock) { window.removeEventListener('scroll', dragLock.fn); dragLock = null; } }
         // finger at clientY: swap with neighbours whose middle was passed (they glide to their new place), and keep the card under the finger.
         // Layout positions (offsetTop) are used, not on-screen ones, so cards that are still gliding do not confuse it.
         function tDragPlace(clientY) {
@@ -4081,6 +4103,7 @@
             if (d.handle) d.handle.classList.remove('t-grip-on');
             if (d.box) { d.box.classList.remove('t-dragging'); if (d.boxPos) d.box.style.position = ''; [...d.box.children].forEach(el => { el.style.transform = ''; el.style.transition = ''; }); }
             if (d.onScroll) window.removeEventListener('scroll', d.onScroll);
+            dragLockEnd();
             window.removeEventListener('pointermove', tGripMove); window.removeEventListener('pointerup', tGripUp); window.removeEventListener('pointercancel', tGripUp);
             document.body.classList.remove('select-none'); tDrag = null;
         }
@@ -4300,7 +4323,9 @@
 
         // ---- the palette / spectrum picker gets a third tab ("שמורים") and a favourites strip under palette and spectrum ----
         Object.assign(Picker, {
-            swatch(x, hx, cur, extra = '') { return `<button type="button" onclick="Picker.pick('${x}','${hx}')" aria-label="${hx}" title="${hx}" class="pk-fav-sw w-7 h-7 rounded-full shadow-sm border border-black/10 transition hover:scale-110 flex-shrink-0 ${cur === hx ? 'ring-2 ring-indigo-500 ring-offset-1 scale-110' : ''} ${extra}" style="background:${hx}"></button>`; },
+            // same look as the palette squares
+            swatch(x, hx, cur) { return `<button type="button" onclick="Picker.pick('${x}','${hx}')" aria-label="${hx}" title="${hx}" class="pk-fav-sw aspect-square rounded-[4px] shadow-sm border border-black/5 transition hover:scale-110 ${cur === hx ? 'ring-2 ring-indigo-500 ring-offset-1 scale-110' : ''}" style="background:${hx}"></button>`; },
+            swGrid(x, list, cur) { return `<div class="grid grid-cols-11 gap-1.5" dir="ltr">${list.map(h => this.swatch(x, h, cur)).join('')}</div>`; },
             favStrip(x) {
                 const cur = this.hexOf(this.val(x)), on = favHas(cur), favs = favList();
                 return `<div id="pk-${x}-favbox" class="mt-4 pt-3 border-t border-slate-100 space-y-2">
@@ -4308,12 +4333,12 @@
                         <span class="text-[11px] font-bold text-slate-500">מועדפים</span>
                         <button type="button" id="pk-${x}-fav" onclick="favToggle(Picker.hexOf(Picker.val('${x}')))" aria-pressed="${on}" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${on ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">${favStarSvg(on)} ${on ? 'במועדפים' : 'הוסף למועדפים'} <span class="w-3 h-3 rounded-full border border-black/10" style="background:${cur}"></span></button>
                     </div>
-                    ${favs.length ? `<div class="flex flex-wrap gap-1.5" dir="ltr">${favs.map(h => this.swatch(x, h, cur)).join('')}</div>` : `<p class="text-[10px] text-slate-400">בחר צבע ולחץ "הוסף למועדפים" כדי לשמור אותו כאן.</p>`}
+                    ${favs.length ? this.swGrid(x, favs, cur) : `<p class="text-[10px] text-slate-400">בחר צבע ולחץ "הוסף למועדפים" כדי לשמור אותו כאן.</p>`}
                 </div>`;
             },
             savedPanel(x) {
                 const cur = this.hexOf(this.val(x)), favs = favList(), used = usedColors().filter(h => !favs.includes(h));
-                const sec = (title, list, empty) => `<div class="space-y-2"><div class="text-[11px] font-bold text-slate-500">${title}</div>${list.length ? `<div class="flex flex-wrap gap-1.5" dir="ltr">${list.map(h => this.swatch(x, h, cur)).join('')}</div>` : `<p class="text-[10px] text-slate-400">${empty}</p>`}</div>`;
+                const sec = (title, list, empty) => `<div class="space-y-2"><div class="text-[11px] font-bold text-slate-500">${title}</div>${list.length ? this.swGrid(x, list, cur) : `<p class="text-[10px] text-slate-400">${empty}</p>`}</div>`;
                 const on = favHas(cur);
                 return `<div class="space-y-4">
                     ${sec('⭐ מועדפים', favs, 'עדיין אין. בפלטה או בספקטרום: בחר צבע ולחץ "הוסף למועדפים".')}
@@ -4342,10 +4367,12 @@
             }
         }
 
-        // ===== Habits: mark today or yesterday (handy after midnight) =====
-        let habitMarkDay = 0;   // 0 = today, -1 = yesterday; back to today when leaving the habits page
-        function habitMarkIso() { return isoAdd(localIso(new Date()), habitMarkDay); }
-        function setHabitMarkDay(d) { habitMarkDay = d === -1 ? -1 : 0; renderHabits(); }
+        // ===== Habits: mark any past day (← / → between days, tap the date to pick one) =====
+        let habitMarkDate = '';   // '' = today; back to today when leaving the habits page
+        function habitMarkIso() { const t = localIso(new Date()); return isIso(habitMarkDate) && habitMarkDate < t ? habitMarkDate : t; }
+        function setHabitMarkDate(iso) { const t = localIso(new Date()); habitMarkDate = isIso(iso) && iso < t ? iso : ''; renderHabits(); }
+        function habitMarkStep(n) { setHabitMarkDate(isoAdd(habitMarkIso(), n)); }
+        function setHabitMarkDay(d) { setHabitMarkDate(d ? isoAdd(localIso(new Date()), d) : ''); }   // kept for older callers
         function toggleHabitMark(id) {
             const h = state.habits.find(x => x.id === id); if (!h) return;
             const iso = habitMarkIso(); if (!Array.isArray(h.completedDates)) h.completedDates = [];
@@ -4353,16 +4380,24 @@
             if (i > -1) h.completedDates.splice(i, 1); else { h.completedDates.push(iso); fireConfetti(); }
             touch(h); saveState(); renderHabits(); if (activeTab === 'dashboard') renderDashboard(currentDashboardView);
         }
-        function habitBtnText(done) { return habitMarkDay ? (done ? 'הושלם אתמול (לחץ לביטול)' : 'סמן כבוצע לאתמול') : (done ? 'הושלם (לחץ לביטול)' : 'סמן כבוצע'); }
+        const habitShort = iso => `${Number(iso.slice(8))}.${Number(iso.slice(5, 7))}`;
+        function habitDayName(iso) { const t = localIso(new Date()), d = isoDiff(iso, t); return d === 0 ? 'היום' : d === 1 ? 'אתמול' : d === 2 ? 'שלשום' : ''; }
+        function habitBtnText(done) {
+            const iso = habitMarkIso(), t = localIso(new Date()); if (iso === t) return done ? 'הושלם (לחץ לביטול)' : 'סמן כבוצע';
+            const when = habitDayName(iso) === 'אתמול' ? 'אתמול' : `ב-${habitShort(iso)}`;
+            return done ? `הושלם ${when} (לחץ לביטול)` : `סמן כבוצע ${when === 'אתמול' ? 'לאתמול' : 'ל-' + habitShort(iso)}`;
+        }
         function renderHabitDayToggle() {
-            const t = localIso(new Date()), y = isoAdd(t, -1), lbl = iso => `${HE_DS[isoDow(iso)]}' ${Number(iso.slice(8))}.${Number(iso.slice(5, 7))}`;
-            [[0, 'היום', t], [-1, 'אתמול', y]].forEach(([d, name, iso]) => { const b = document.getElementById(`habit-day-${d ? 'y' : 't'}`); if (!b) return; const on = habitMarkDay === d;
-                b.innerHTML = `${name} <span class="opacity-70 font-semibold">· ${lbl(iso)}</span>`; b.setAttribute('aria-pressed', String(on));
-                b.className = `px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${on ? 'bg-white shadow-sm ' + (d ? 'text-amber-600' : 'text-indigo-600') : 'text-slate-500 hover:text-slate-700'}`; });
+            const t = localIso(new Date()), iso = habitMarkIso(), isToday = iso === t, name = habitDayName(iso);
+            const lbl = document.getElementById('habit-day-label'), inp = document.getElementById('habit-day-input'), next = document.getElementById('habit-day-next'), back = document.getElementById('habit-day-today');
+            if (lbl) lbl.innerHTML = `${name ? `<span class="${isToday ? 'text-indigo-600' : 'text-amber-600'}">${name}</span> · ` : ''}יום ${HE_DS[isoDow(iso)]}' <bdi dir="ltr">${habitShort(iso)}.${iso.slice(0, 4)}</bdi> <i class="fa-solid fa-calendar-days text-[11px] opacity-50"></i>`;
+            if (inp) { inp.max = t; inp.value = iso; }
+            if (next) { next.disabled = isToday; next.classList.toggle('opacity-30', isToday); }
+            if (back) back.classList.toggle('hidden', isToday);
             const hint = document.getElementById('habit-day-hint');
             if (hint) {
-                if (habitMarkDay) { hint.textContent = 'מסמנים עכשיו עבור אתמול'; hint.className = 'text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg'; }
-                else if (new Date().getHours() < 5) { hint.textContent = 'אחרי חצות? אפשר לסמן גם לאתמול'; hint.className = 'text-[11px] font-semibold text-slate-500'; }
+                if (!isToday) { hint.textContent = `מסמנים עכשיו עבור ${name === 'אתמול' ? 'אתמול' : `יום ${HE_DS[isoDow(iso)]}' ${habitShort(iso)}`}`; hint.className = 'text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg'; }
+                else if (new Date().getHours() < 5) { hint.textContent = 'אחרי חצות? לחץ → כדי לסמן לאתמול'; hint.className = 'text-[11px] font-semibold text-slate-500'; }
                 else { hint.textContent = ''; hint.className = 'hidden'; }
             }
         }
@@ -4385,7 +4420,7 @@
 
         // --- 6. Navigation & FAB ---
         function switchMainTab(tab) {
-            activeTab = tab; if (tab !== 'habits') habitMarkDay = 0;
+            activeTab = tab; if (tab !== 'habits') habitMarkDate = '';
             ['dashboard', 'tasks', 'habits', 'schedule'].forEach(t => {
                 const view = document.getElementById(`view-${t}`); const dbtn = document.getElementById(`dtab-${t}`); const mbtn = document.getElementById(`mtab-${t}`);
                 if (t === tab) {
