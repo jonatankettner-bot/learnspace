@@ -992,9 +992,9 @@
                 <div class="glass-card rounded-3xl p-4 flex flex-col gap-3">
                     <div class="flex items-center justify-between flex-wrap gap-2 border-b border-slate-200/50 pb-3">
                         <div class="flex items-center gap-2 overflow-x-auto hide-scroll pb-1 w-full sm:w-auto">
-                            <button onclick="setTaskFilter('all')" id="filter-all" class="px-4 py-1.5 rounded-xl text-xs font-bold bg-indigo-500 text-white shadow-sm transition whitespace-nowrap">הכל</button>
-                            <button onclick="setTaskFilter('pending')" id="filter-pending" class="px-4 py-1.5 rounded-xl text-xs font-semibold bg-white/70 opacity-80 hover:opacity-100 transition border border-slate-200 whitespace-nowrap">לביצוע</button>
+                            <button onclick="setTaskFilter('pending')" id="filter-pending" class="px-4 py-1.5 rounded-xl text-xs font-bold bg-indigo-500 text-white shadow-sm transition whitespace-nowrap">לביצוע</button>
                             <button onclick="setTaskFilter('completed')" id="filter-completed" class="px-4 py-1.5 rounded-xl text-xs font-semibold bg-white/70 opacity-80 hover:opacity-100 transition border border-slate-200 whitespace-nowrap">הושלמו</button>
+                            <button onclick="setTaskFilter('all')" id="filter-all" class="px-4 py-1.5 rounded-xl text-xs font-semibold bg-white/70 opacity-80 hover:opacity-100 transition border border-slate-200 whitespace-nowrap">הכל</button>
                             <button onclick="setTaskFilter('deleted')" id="filter-deleted" class="px-4 py-1.5 rounded-xl text-xs font-semibold bg-white/70 text-rose-600 border border-rose-100 hover:bg-rose-50 transition flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-trash-can text-[10px]"></i> פח (<span id="trash-tab-count">0</span>)</button>
                         </div>
                         <button type="button" onclick="openSettingsAt('tasks')" aria-label="הגדרות לימודים: קורסים וסוגי מטלות" title="קורסים וסוגי מטלות" class="w-8 h-8 rounded-xl bg-white/70 border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-white flex items-center justify-center transition flex-shrink-0"><i class="fa-solid fa-gear text-xs"></i></button>
@@ -1525,7 +1525,7 @@
         
         let state = {};
         let activeTab = 'dashboard';
-        let currentTaskFilter = 'all';
+        let currentTaskFilter = 'pending';
         let currentCourseFilter = 'all';
         let currentDashboardView = 'day'; 
         let currentScheduleDay = new Date().getDay();
