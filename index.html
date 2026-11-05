@@ -2857,7 +2857,26 @@
             closeSearch(); closeSettingsModal();
             if (where === 'new_task') { switchMainTab('tasks'); cancelTaskEdit(); toggleTaskAccordion(true); setTimeout(() => { const el = document.getElementById('task-name'); if (el) el.focus(); }, 350); }
             else if (where === 'tasks') switchMainTab('tasks');
+            else if (/^(task|habit|event):/.test(where || '')) widgetOpenItem(where.slice(0, where.indexOf(':')), where.slice(where.indexOf(':') + 1));
             else switchMainTab('dashboard');
+        }
+        // a tap on a row of the widget (not on its box): open the app on that item, scrolled to it and highlighted.
+        // Only the filters that would hide it are changed; the rest of the view stays as it was.
+        function widgetOpenItem(kind, id) {
+            if (kind === 'task') {
+                const t = state.tasks.find(x => x.id === id);
+                if (!t) { switchMainTab('tasks'); showToast('המשימה כבר לא ברשימה', 'info'); return; }
+                if (!wsVisible(t)) wsSetActive(wsOfItem(t));
+                if (currentTaskCat !== 'all' && tCat(t) !== currentTaskCat) currentTaskCat = 'all';
+                if (currentTaskCat === 'personal') { if (currentPtypeFilter !== 'all' && (t.ptype || '') !== currentPtypeFilter && !(currentPtypeFilter === '__none' && !etById(t.ptype))) currentPtypeFilter = 'all'; }
+                else if (currentCourseFilter !== 'all' && t.courseId !== currentCourseFilter) currentCourseFilter = 'all';
+                switchMainTab('tasks');
+                if (currentTaskFilter === 'deleted' || (currentTaskFilter === 'pending' && t.completed) || (currentTaskFilter === 'completed' && !t.completed)) setTaskFilter(t.completed ? 'all' : 'pending');
+                renderTaskCatUI(); renderTasks();
+                const go = (n) => { const el = document.getElementById('task-card-' + id); if (el) srchFlash(el); else if (n > 0) setTimeout(() => go(n - 1), 150); };
+                setTimeout(() => go(6), 80);
+            } else if (kind === 'habit') { switchMainTab('habits'); setTimeout(() => srchFlash(document.getElementById('habit-card-' + id)), 80); }
+            else if (kind === 'event') srchGo('event', id);
         }
 
         function timeRangeHtml(a, b) { return b ? `<bdi dir="ltr">${escapeHtml(a || '')} - ${escapeHtml(b)}</bdi>` : escapeHtml(a || ''); }
