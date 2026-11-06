@@ -952,7 +952,7 @@
                             </div>
                             <div id="task-academic-row" class="grid grid-cols-2 gap-3">
                                 <div><label class="block text-xs font-semibold opacity-80 mb-1.5">קורס</label><select id="task-course" class="w-full px-3 py-2.5 rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs transition hide-scroll"></select></div>
-                                <div><label class="block text-xs font-semibold opacity-80 mb-1.5">סוג מטלה</label><select id="task-type" class="w-full px-3 py-2.5 rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs transition hide-scroll"></select></div>
+                                <div><label class="block text-xs font-semibold opacity-80 mb-1.5">סוג מטלה</label><select id="task-type" onchange="ttNewToggle()" class="w-full px-3 py-2.5 rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs transition hide-scroll"></select></div>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div><label class="block text-xs font-semibold opacity-80 mb-1.5">תאריך יעד</label><input type="date" id="task-date" class="w-full px-3 py-2.5 rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs transition"></div>
@@ -1687,6 +1687,7 @@
             const uniqueById = (arr) => { const map = new Map(); arr.forEach(item => { if(!map.has(item.id) || map.get(item.id).updatedAt < item.updatedAt) map.set(item.id, item); }); return Array.from(map.values()); };
             s.tasks = uniqueById(s.tasks); s.trash = uniqueById(s.trash); s.habits = uniqueById(s.habits); s.events = uniqueById(s.events); s.workspaces = uniqueById(s.workspaces);
             if (!Array.isArray(s.eventTypes) || !s.eventTypes.length) s.eventTypes = defaultEventTypes();
+            (s.eventTypes || []).forEach(t => { if (t && !t.category && !(s.events || []).some(e => e.type === t.id && e.category !== 'personal') && ((s.tasks || []).some(x => x.category === 'personal' && x.ptype === t.id) || (s.events || []).some(e => e.type === t.id && e.category === 'personal'))) { t.category = 'personal'; t.updatedAt = Date.now(); } });
             s.favColors = uniqueById((Array.isArray(s.favColors) ? s.favColors : []).filter(f => f && /^#[0-9a-f]{6}$/i.test(f.hex || '')).map(f => ({ id: 'fc' + f.hex.slice(1).toLowerCase(), hex: f.hex.toLowerCase(), updatedAt: f.updatedAt || 0 })).filter(isAlive)).slice(0, 40);
             s.eventTypes = uniqueById(s.eventTypes.filter(t => t && t.id && typeof t.name === 'string' && t.name.trim()).map(t => ({ ...t, id: cleanId(t.id), name: t.name.trim().slice(0, 40), updatedAt: t.updatedAt || 0 })).filter(isAlive));
             if (!s.eventTypes.length) s.eventTypes = defaultEventTypes();
@@ -3082,15 +3083,17 @@
             const on = sel.value === '__new'; box.classList.toggle('hidden', !on); if (typeof evFormColorRender === 'function') evFormColorRender();
             if (on) { const i = document.getElementById('event-type-new'); if (i && document.activeElement === sel) setTimeout(() => i.focus(), 30); }
         }
-        // a name typed in the form becomes a type without category / color, until it is edited in settings
+        // a name typed in the form becomes a type of the form's category (אקדמי / אישי)
         function etFromForm() {
             const sel = document.getElementById('event-type'); if (!sel) return '';
             if (sel.value !== '__new') return sel.value;
             const name = (document.getElementById('event-type-new').value || '').trim().slice(0, 40);
             if (!name) return '';
-            const same = (state.eventTypes || []).find(t => t.name.trim() === name); if (same) return same.id;
-            const t = { id: newId('et'), name, category: '', color: '', updatedAt: Date.now() }; state.eventTypes.push(t);
-            showToast(`הסוג "${name}" נוסף. אפשר לסווג ולצבוע אותו בהגדרות ← לו"ז`, 'info');
+            const cat = (document.getElementById('event-category') || {}).value === 'personal' ? 'personal' : 'academic';
+            const same = (state.eventTypes || []).find(t => t.name.trim() === name && etCat(t) === cat) || (state.eventTypes || []).find(t => t.name.trim() === name && !etCat(t));
+            if (same) { if (!etCat(same)) { same.category = cat; touch(same); } return same.id; }
+            const t = { id: newId('et'), name, category: cat, color: '', updatedAt: Date.now() }; state.eventTypes.push(t);
+            showToast(`הסוג "${name}" נוסף (${cat === 'personal' ? 'אישי' : 'אקדמי'}). אפשר לערוך אותו בהגדרות`, 'info');
             return t.id;
         }
         // the types are edited in one place at a time: in settings → לו"ז (all of them) or settings → משימות (the personal ones, shared with personal events)
@@ -4274,7 +4277,7 @@
                 b.className = `flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${k === c ? 'bg-white shadow-sm ' + (k === 'academic' ? 'text-indigo-600' : 'text-violet-600') : 'text-slate-500 hover:text-slate-700'}`;
                 b.setAttribute('aria-pressed', String(k === c)); });
             const ar = document.getElementById('task-academic-row'), pr = document.getElementById('task-personal-row');
-            if (ar) ar.classList.toggle('hidden', c === 'personal'); if (pr) pr.classList.toggle('hidden', c !== 'personal');
+            if (ar) ar.classList.toggle('hidden', c === 'personal'); if (pr) pr.classList.toggle('hidden', c !== 'personal'); ttNewToggle();
             { const nm = document.getElementById('task-name'); if (nm) nm.placeholder = c === 'personal' ? 'לדוגמה: לקנות מתנה, לקבוע תור...' : 'לדוגמה: דוח מעבדה 3...'; }
             if (c === 'academic') { const cs = document.getElementById('task-course'); if (cs && !cs.value) cs.value = wsCourses().some(x => x.id === state.taskDefaults.courseId) ? state.taskDefaults.courseId : generalCourseId(); }
             renderTaskPtypeOptions(keepType === undefined ? undefined : keepType);
@@ -4293,24 +4296,48 @@
             const on = sel.value === '__new'; box.classList.toggle('hidden', !on);
             if (on) { const i = document.getElementById('task-ptype-new'); if (i && document.activeElement === sel) setTimeout(() => i.focus(), 30); }
         }
-        // a name typed here becomes a type without category / color (same as in the event form)
+        // a name typed here becomes a PERSONAL type (it was typed in a personal task)
         function tpFromForm() {
             const sel = document.getElementById('task-ptype'); if (!sel) return '';
             if (sel.value !== '__new') return sel.value;
             const name = (document.getElementById('task-ptype-new').value || '').trim().slice(0, 40);
             if (!name) return '';
-            const same = (state.eventTypes || []).find(t => t.name.trim() === name); if (same) return same.id;
-            const t = { id: newId('et'), name, category: '', color: '', updatedAt: Date.now() }; state.eventTypes.push(t);
+            const same = (state.eventTypes || []).find(t => t.name.trim() === name && etCat(t) === 'personal') || (state.eventTypes || []).find(t => t.name.trim() === name && !etCat(t));
+            if (same) { if (!etCat(same)) { same.category = 'personal'; touch(same); } return same.id; }
+            const t = { id: newId('et'), name, category: 'personal', color: '', updatedAt: Date.now() }; state.eventTypes.push(t);
             const ni = document.getElementById('task-ptype-new'); if (ni) ni.value = '';
-            showToast(`הסוג "${name}" נוסף. אפשר לסווג ולצבוע אותו בהגדרות ← לו"ז`, 'info');
+            showToast(`הסוג האישי "${name}" נוסף. אפשר לערוך אותו בהגדרות ← משימות`, 'info');
             return t.id;
         }
         // called by handleTaskSubmit, before the work space is chosen
+        // academic task type typed in the form → a new task type (settings → משימות → סוגי מטלות)
+        const TT_NEW_COLORS = ['#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#06b6d4', '#84cc16', '#eab308', '#6366f1'];
+        function ttFromForm() {
+            const name = ((document.getElementById('task-type-new') || {}).value || '').trim().slice(0, 40);
+            if (!name) return (state.taskTypes[0] || {}).id || '';
+            const same = state.taskTypes.find(t => t.name.trim() === name); if (same) return same.id;
+            const t = { id: newId('tt'), name, badge: TT_NEW_COLORS[state.taskTypes.length % TT_NEW_COLORS.length], icon: 'fa-tag', updatedAt: Date.now() };
+            state.taskTypes.push(t);
+            const ni = document.getElementById('task-type-new'); if (ni) ni.value = '';
+            showToast(`סוג המטלה "${name}" נוסף. אפשר לערוך אותו בהגדרות ← משימות`, 'info');
+            return t.id;
+        }
+        function ttNewToggle() {
+            const sel = document.getElementById('task-type'), row = document.getElementById('task-academic-row'); if (!sel || !row) return;
+            let box = document.getElementById('task-type-new-row');
+            if (!box) {   // the name field sits right under the course / type row
+                box = document.createElement('div'); box.id = 'task-type-new-row'; box.className = 'hidden';
+                box.innerHTML = '<label for="task-type-new" class="block text-xs font-semibold opacity-80 mb-1.5">שם סוג המטלה החדש</label><input type="text" id="task-type-new" maxlength="40" placeholder="למשל: פרויקט, מצגת, סמינר" class="w-full px-3 py-2 rounded-xl bg-white border border-indigo-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">';
+                row.parentElement.insertBefore(box, row.nextSibling);
+            }
+            const on = sel.value === '__new' && (document.getElementById('task-category') || {}).value !== 'personal'; box.classList.toggle('hidden', !on);
+            if (on) { const i = document.getElementById('task-type-new'); if (i && document.activeElement === sel) setTimeout(() => i.focus(), 30); }
+        }
         function tFormApply(d) {
             const cat = (document.getElementById('task-category') || {}).value === 'personal' ? 'personal' : 'academic';
             d.category = cat;
             if (cat === 'personal') { d.ptype = tpFromForm(); d.courseId = ''; d.typeId = ''; }
-            else d.ptype = '';
+            else { d.ptype = ''; if (d.typeId === '__new') d.typeId = ttFromForm(); }
             return d;
         }
 
@@ -4838,7 +4865,7 @@
         function renderGenericDropdowns() {
             const courseSel = document.getElementById('task-course'); const typeSel = document.getElementById('task-type');
             if(courseSel) { courseSel.innerHTML = wsCourses().map(c => `<option value="${c.id}">${escapeHtml(wsCourseLabel(c))}</option>`).join('') || '<option value="">כללי (אין קורסים בסביבה)</option>'; courseSel.value = wsCourses().some(c => c.id === state.taskDefaults.courseId) ? state.taskDefaults.courseId : generalCourseId(); }
-            if(typeSel) { typeSel.innerHTML = state.taskTypes.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join(''); typeSel.value = state.taskDefaults.typeId || (state.taskTypes[0]?state.taskTypes[0].id:''); }
+            if(typeSel) { const keepT = typeSel.value; typeSel.innerHTML = state.taskTypes.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('') + '<option value="__new">＋ סוג חדש…</option>'; typeSel.value = keepT === '__new' ? '__new' : (state.taskDefaults.typeId || (state.taskTypes[0]?state.taskTypes[0].id:'')); ttNewToggle(); }
             const courseFilter = document.getElementById('course-filter');
             if(courseFilter) { courseFilter.innerHTML = `<option value="all">כל הקורסים</option>` + wsCourses().map(c => `<option value="${c.id}">${escapeHtml(wsCourseLabel(c))}</option>`).join(''); courseFilter.value = currentCourseFilter; }
             renderTaskCatUI(); renderTaskPtypeOptions();
@@ -4920,7 +4947,7 @@
             document.getElementById('task-id-hidden').value = ''; document.getElementById('task-name').value = ''; document.getElementById('task-date').value = ''; document.getElementById('task-time').value = '';
             document.getElementById('task-course').value = wsCourses().some(c => c.id === state.taskDefaults.courseId) ? state.taskDefaults.courseId : generalCourseId(); formSubtasksLoad([]); setFormMode('task', false); { const rEl = document.getElementById('task-recur'); if (rEl) rEl.value = ''; }
             document.getElementById('task-type').value = state.taskDefaults.typeId || (state.taskTypes[0]?state.taskTypes[0].id:'');
-            document.getElementById('task-priority').value = 'normal'; setTaskCategory(currentTaskCat === 'personal' ? 'personal' : 'academic', null);
+            document.getElementById('task-priority').value = 'normal'; { const ni = document.getElementById('task-type-new'); if (ni) ni.value = ''; } ttNewToggle(); setTaskCategory(currentTaskCat === 'personal' ? 'personal' : 'academic', null);
             formRemState.task = { mode: 'default', offsets: [...(state.notificationSettings?.tasksOffsets || [60, 1440])] };
             setItemReminderMode('task', 'default'); renderItemOffsetButtons('task');
             document.getElementById('task-submit-btn').innerHTML = `שמור משימה`; document.getElementById('task-cancel-btn').classList.add('hidden');
