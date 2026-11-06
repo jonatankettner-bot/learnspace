@@ -1999,7 +1999,7 @@
             let items = [];
             try { items = computeReminders(new Date()); } catch (e) { items = []; }
             remLast = items;
-            if (remNative()) { try { window.AndroidApp.setReminders(JSON.stringify({ mode: remSoundMode(), items })); } catch (e) {} }
+            if (remNative()) { try { window.AndroidApp.setReminders(JSON.stringify({ mode: remSoundMode(), items, open: state.tasks.filter(t => !t.completed).map(t => t.id) })); } catch (e) {} }
             else scheduleWebReminders(items);
             const tab = document.getElementById('tab-content-notifications'); if (tab && !tab.classList.contains('hidden')) renderReminderStatus();
         }
