@@ -1329,7 +1329,7 @@
                 <button onclick="closeSettingsModal()" class="w-8 h-8 rounded-full hover:bg-slate-200/60 flex items-center justify-center opacity-70 hover:opacity-100 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="flex flex-shrink-0 border-b border-slate-200/60 px-2 sm:px-4 gap-1 overflow-x-auto hide-scroll">
-                <button onclick="switchSettingsTab('tasks')" id="tab-btn-tasks" class="flex-1 justify-center py-3 px-2 font-bold text-xs border-b-2 border-indigo-500 text-indigo-600 transition flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-graduation-cap"></i> לימודים</button>
+                <button onclick="switchSettingsTab('tasks')" id="tab-btn-tasks" class="flex-1 justify-center py-3 px-2 font-bold text-xs border-b-2 border-indigo-500 text-indigo-600 transition flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-list-check"></i> משימות</button>
                 <button onclick="switchSettingsTab('schedule')" id="tab-btn-schedule" class="flex-1 justify-center py-3 px-2 font-bold text-xs opacity-60 hover:opacity-100 border-b-2 border-transparent transition flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-calendar-week text-sky-500"></i> לו"ז</button>
                 <button onclick="switchSettingsTab('notifications')" id="tab-btn-notifications" class="flex-1 justify-center py-3 px-2 font-bold text-xs opacity-60 hover:opacity-100 border-b-2 border-transparent transition flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-bell text-indigo-500"></i> התראות</button>
                 <button onclick="switchSettingsTab('preferences')" id="tab-btn-preferences" class="flex-1 justify-center py-3 px-2 font-bold text-xs opacity-60 hover:opacity-100 border-b-2 border-transparent transition flex items-center gap-1.5 whitespace-nowrap"><i class="fa-solid fa-sliders text-indigo-400"></i> כללי</button>
@@ -1350,6 +1350,10 @@
                     <div class="space-y-3 pt-4 border-t border-slate-200/50">
                         <div class="flex items-center justify-between"><div><h4 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-tags text-indigo-500"></i> סוגי מטלות</h4></div><button type="button" onclick="openGenericTypeModal('taskType')" class="px-3 py-1.5 bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-sm hover:scale-105 transition"><i class="fa-solid fa-plus"></i> הוסף סוג</button></div>
                         <div id="tasktypes-list-container" class="space-y-2 pt-1"></div>
+                    </div>
+                    <div class="space-y-3 pt-4 border-t border-slate-200/50">
+                        <h4 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-heart text-violet-500"></i> סוגים אישיים</h4>
+                        <div id="ptypes-box" class="space-y-2"></div>
                     </div>
                 </div>
 
@@ -3089,8 +3093,12 @@
             showToast(`הסוג "${name}" נוסף. אפשר לסווג ולצבוע אותו בהגדרות ← לו"ז`, 'info');
             return t.id;
         }
+        // the types are edited in one place at a time: in settings → לו"ז (all of them) or settings → משימות (the personal ones, shared with personal events)
+        function etHostIsTasks() { const t = document.getElementById('tab-content-tasks'); return !!(t && !t.classList.contains('hidden') && document.getElementById('ptypes-box')); }
         function renderEventTypesSettings() {
-            const box = document.getElementById('event-types-box'); if (!box) return;
+            const inTasks = etHostIsTasks(), box = document.getElementById(inTasks ? 'ptypes-box' : 'event-types-box'), other = document.getElementById(inTasks ? 'event-types-box' : 'ptypes-box');
+            if (other) other.innerHTML = '';   // ids inside must exist once
+            if (!box) return;
             const dc = document.getElementById('setting-ev-default-cat'); if (dc) dc.value = state.eventDefaultCategory === 'personal' ? 'personal' : 'academic';
             const ct = document.getElementById('setting-cal-tasks'); if (ct) ct.checked = state.calShowTasks !== false;
             const used = id => state.events.filter(e => e.type === id).length, usedT = id => state.tasks.filter(t => tCat(t) === 'personal' && t.ptype === id).length;
@@ -3112,8 +3120,13 @@
                 const key = cat || 'none', open = etOpen.has(key) || list.some(t => t.id === etEditingId);
                 return `<div class="rounded-2xl border border-slate-200/80 bg-white/50 overflow-hidden"><button type="button" onclick="etToggleGroup('${key}')" aria-expanded="${open}" id="et-group-${key}" class="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-right hover:bg-white/70 transition"><span class="text-xs font-bold flex items-center gap-1.5" style="color:${color}"><i class="fa-solid ${icon}"></i> ${title} <span class="opacity-60 font-semibold">(${list.length})</span></span><i class="fa-solid fa-chevron-down text-[10px] opacity-50 transition-transform ${open ? 'rotate-180' : ''}"></i></button>${open ? `<div class="px-2 pb-2 space-y-1.5">${list.map(row).join('') || '<p class="text-[11px] opacity-50 pr-1 py-1">אין סוגים</p>'}</div>` : ''}</div>`;
             };
-            box.innerHTML = group('academic', 'אקדמי', 'fa-graduation-cap', EV_CATS.academic.color) + group('personal', 'אישי', 'fa-heart', EV_CATS.personal.color) + group('', 'ללא סיווג', 'fa-circle-question', '#64748b')
-                + `<div class="flex gap-2 pt-2"><input id="et-new-name" type="text" maxlength="40" placeholder="סוג חדש, למשל: סמינר" onkeydown="if(event.key==='Enter'){event.preventDefault();etAdd()}" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"><select id="et-new-cat" class="px-2 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs font-bold"><option value="academic">אקדמי</option><option value="personal">אישי</option><option value="">ללא סיווג</option></select><button type="button" onclick="etAdd()" class="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 flex-shrink-0"><i class="fa-solid fa-plus"></i> הוסף</button></div>`;
+            const addRow = inTasks
+                ? `<div class="flex gap-2 pt-2"><input id="et-new-name" type="text" maxlength="40" placeholder="סוג אישי חדש, למשל: קניות" onkeydown="if(event.key==='Enter'){event.preventDefault();etAdd()}" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"><input type="hidden" id="et-new-cat" value="personal">`
+                : `<div class="flex gap-2 pt-2"><input id="et-new-name" type="text" maxlength="40" placeholder="סוג חדש, למשל: סמינר" onkeydown="if(event.key==='Enter'){event.preventDefault();etAdd()}" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"><select id="et-new-cat" class="px-2 py-2 rounded-xl bg-white/80 border border-slate-200 text-xs font-bold"><option value="academic">אקדמי</option><option value="personal">אישי</option><option value="">ללא סיווג</option></select>`;
+            box.innerHTML = (inTasks
+                ? `<p class="text-[11px] opacity-70 leading-relaxed">הסוגים של משימות אישיות. הם משותפים לאירועים האישיים בלו"ז, ושינוי כאן משנה גם שם.</p>` + `<div class="space-y-1.5">${(state.eventTypes || []).filter(t => etCat(t) === 'personal').map(row).join('') || '<p class="text-[11px] opacity-50 py-1">אין סוגים אישיים</p>'}</div>` + group('', 'ללא סיווג', 'fa-circle-question', '#64748b')
+                : group('academic', 'אקדמי', 'fa-graduation-cap', EV_CATS.academic.color) + group('personal', 'אישי', 'fa-heart', EV_CATS.personal.color) + group('', 'ללא סיווג', 'fa-circle-question', '#64748b'))
+                + addRow + `<button type="button" onclick="etAdd()" class="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 flex-shrink-0"><i class="fa-solid fa-plus"></i> הוסף</button></div>`;
         }
         // colour choices for a type: none (by category), the basic colours, then the favourites (⭐)
         function etSwatchesHtml(sel) {
@@ -3636,6 +3649,7 @@
                 { tab: 'tasks', key: 'ws', title: 'סביבות עבודה', icon: 'fa-layer-group', nodes: [top(tt, byId('ws-section'))] },
                 { tab: 'tasks', key: 'courses', title: 'קורסים', icon: 'fa-book-bookmark', nodes: [top(tt, byId('courses-list-container'))] },
                 { tab: 'tasks', key: 'tasktypes', title: 'סוגי מטלות', icon: 'fa-tags', nodes: [top(tt, byId('tasktypes-list-container'))] },
+                { tab: 'tasks', key: 'ptypes', title: 'סוגים אישיים', icon: 'fa-heart', nodes: [top(tt, byId('ptypes-box'))] },
                 { tab: 'preferences', key: 'sync', title: 'חשבון וסנכרון', icon: 'fa-cloud', nodes: [top(tp, byId('cloud-box'))] },
                 { tab: 'preferences', key: 'radar', title: 'השורה הרצה ו"הדבר הבא"', icon: 'fa-compass', nodes: [top(tp, byId('radar-settings-box'))] },
                 { tab: 'preferences', key: 'widget', title: 'ווידג\'טים', icon: 'fa-mobile-screen', nodes: [top(tp, byId('widget-settings-box'))] },
@@ -3658,6 +3672,11 @@
                     if (d.key !== 'look' && d.key !== 'sync') { const h = n.querySelector('h4'); if (h) h.classList.add('hidden'); }
                 });
             });
+            // משימות: an "אקדמי" part and an "אישי" part
+            const head = (key, text, icon, color) => { const sec = document.querySelector(`.set-sec[data-sec="${key}"]`); if (!sec || document.getElementById(`set-head-${key}`)) return;
+                const h = document.createElement('div'); h.id = `set-head-${key}`; h.className = 'set-head flex items-center gap-1.5 text-xs font-extrabold pt-2 px-1'; h.style.color = color;
+                h.innerHTML = `<i class="fa-solid ${icon}"></i> ${text}`; sec.parentElement.insertBefore(h, sec); };
+            head('ws', 'אקדמי', 'fa-graduation-cap', '#4f46e5'); head('ptypes', 'אישי', 'fa-heart', '#8b5cf6');
             const tp = document.getElementById('tab-content-preferences'); if (tp) tp.className = tp.className.replace('space-y-6', 'space-y-3');
             const tt = document.getElementById('tab-content-tasks'); if (tt) tt.className = tt.className.replace('space-y-6', 'space-y-3');
         }
@@ -3667,6 +3686,7 @@
             body.classList.toggle('hidden', !open); head.setAttribute('aria-expanded', String(open));
             const ch = head.querySelector('.fa-chevron-down'); if (ch) ch.classList.toggle('rotate-180', open);
             if (open) setOpen.add(key); else setOpen.delete(key);
+            if (open && key === 'ptypes') renderEventTypesSettings();
             setSecSummaries();
         }
         function setSecSummaries() {
@@ -3677,6 +3697,7 @@
                 put('ws', `${act ? act.name : 'כל הסביבות'}${wss.length > 1 ? ` · ${wss.length} סביבות` : ''}`);
                 put('courses', `${wsCourses().length} קורסים`);
                 put('tasktypes', `${(state.taskTypes || []).length} סוגים`);
+                put('ptypes', `${(state.eventTypes || []).filter(t => etCat(t) === 'personal').length} סוגים · משותפים ללו"ז`);
                 put('sync', Cloud.user ? `${(SYNC_UI[Sync.status] || SYNC_UI.local).msg} · ${Cloud.user.email || ''}` : (SYNC_UI[Sync.status] || SYNC_UI.local).msg);
                 const hid = (state.radarHidden || []).length;
                 put('radar', `${(RADAR_RANGES.find(r => r[0] === radarRange()) || [])[1] || ''} · ${state.radarSort === 'priority' ? 'לפי דחיפות' : 'לפי תאריך'}${hid ? ` · ${hid} סוגים מוסתרים` : ''}`);
@@ -5130,6 +5151,7 @@
                 }
             });
             if (tab === 'notifications') renderNotificationSettingsUI();
+            if (tab === 'tasks' || tab === 'schedule') { try { renderEventTypesSettings(); } catch (e) {} }
         }
 
         // --- Theme & Export utils ---
