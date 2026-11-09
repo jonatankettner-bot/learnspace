@@ -1384,7 +1384,7 @@
                             <h4 class="font-bold text-xs text-indigo-900">הגדרות התראות</h4>
                             <p class="text-[11px] opacity-75 text-indigo-800">יחולו כברירת מחדל אלא אם הוגדר אחרת</p>
                         </div>
-                        <button type="button" id="notif-permission-btn" onclick="requestNotificationPermission()" class="hidden px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-sm transition whitespace-nowrap">אשר התראות</button>
+                        <button type="button" id="notif-permission-btn" onclick="requestNotificationPermission()" class="hidden px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-sm transition whitespace-nowrap">אשר התראות</button><span id="notif-permission-ok" class="hidden px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs whitespace-nowrap"><i class="fa-solid fa-circle-check ml-1"></i>ההתראות פעילות</span>
                     </div>
 
                     <div id="reminder-status-box"></div>
@@ -4705,6 +4705,7 @@
             const b = document.getElementById('notif-permission-btn'); if (!b) return;
             const s = remPermissionState();
             b.classList.toggle('hidden', !(s === 'blocked' || s === 'ask'));
+            const okEl = document.getElementById('notif-permission-ok'); if (okEl) okEl.classList.toggle('hidden', s !== 'granted');
         }
         // back from the system settings: show the real state
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { const tab = document.getElementById('tab-content-notifications'); if (tab && !tab.classList.contains('hidden')) { try { renderReminderStatus(); } catch (e) {} } } });
