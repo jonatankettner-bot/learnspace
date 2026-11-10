@@ -3024,10 +3024,17 @@
                     <button type="button" id="tp-ok" onclick="tpApply()" class="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-500 text-white hover:bg-indigo-600 shadow-sm">אישור</button></div>
                 </div></div>`;
             sh.classList.remove('hidden');
-            tpScrollTo('tp-h', h, false); tpScrollTo('tp-m', m, false); tpMark();
+            tpScrollTo('tp-h', h, false); tpScrollTo('tp-m', m, false); tpMark(); tpWatchStart();
+            ['tp-h', 'tp-m'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('scrollend', tpMark); });
         }
         function tpScrollTo(id, i, smooth) { const el = document.getElementById(id); if (!el) return; const y = i * tpItemH(el); try { el.scrollTo({ top: y, behavior: smooth ? 'smooth' : 'auto' }); } catch (e) { el.scrollTop = y; } if (!smooth) tpMark(); }
-        function tpIndex(id, max) { const el = document.getElementById(id); return el ? Math.max(0, Math.min(max, Math.round(el.scrollTop / tpItemH(el)))) : 0; }
+        // the row whose middle is at the wheel's middle (where the highlight band is), from the real geometry
+        function tpIndex(id, max) {
+            const el = document.getElementById(id); if (!el) return 0;
+            const ih = tpItemH(el), pad = parseFloat(getComputedStyle(el).paddingTop) || 0;
+            const k = Math.round((el.scrollTop + el.clientHeight / 2 - pad - ih / 2) / ih);
+            return Math.max(0, Math.min(max, isFinite(k) ? k : 0));
+        }
         function tpValue() { return String(tpIndex('tp-h', 23)).padStart(2, '0') + ':' + String(tpIndex('tp-m', 59)).padStart(2, '0'); }
         function tpMark() {
             const d = document.getElementById('tp-display'); if (d) d.textContent = tpValue();
@@ -3035,8 +3042,21 @@
         }
         let tpScrollTimer = null;
         function tpOnScroll() { tpMark(); clearTimeout(tpScrollTimer); tpScrollTimer = setTimeout(tpMark, 90); }
+        // some Android WebViews finish the snap after a fling without a last "scroll" event, which left the big display one row behind:
+        // while the sheet is open, follow the wheels' real position every frame (cheap: only redraws when it moved)
+        let tpWatchOn = false, tpLastPos = '';
+        function tpWatch() {
+            const sh = document.getElementById('tp-sheet');
+            if (!sh || sh.classList.contains('hidden')) { tpWatchOn = false; return; }
+            const h = document.getElementById('tp-h'), m = document.getElementById('tp-m');
+            const pos = (h ? h.scrollTop : 0) + '/' + (m ? m.scrollTop : 0);
+            if (pos !== tpLastPos) { tpLastPos = pos; tpMark(); }
+            requestAnimationFrame(tpWatch);
+        }
+        function tpWatchStart() { if (tpWatchOn || typeof requestAnimationFrame !== 'function') return; tpWatchOn = true; tpLastPos = ''; requestAnimationFrame(tpWatch); }
         function tpApply(v) {
             const inp = tpTarget; if (!inp) return tpClose();
+            tpMark();   // what is saved = what is in the band = what the display shows
             const val = v === '' ? '' : tpValue();
             inp.value = val; inp.dataset.last = val;
             inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
