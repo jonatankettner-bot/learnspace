@@ -1625,7 +1625,7 @@
 
         // --- 3. Data Normalization ---
         function getDefaultNotifSettings() { return { soundMode: 'sound_vibrate', tasksEnabled: true, tasksOffsets: [60, 1440], tasksDefaultTime: '09:00', tasksNoTimeEnabled: true, eventsEnabled: true, eventsOffsets: [30], habitsEnabled: true, habitsOffsets: [0], dailySummaryEnabled: true, dailySummaryTime: '08:00', quietHoursEnabled: false, quietStart: '23:00', quietEnd: '07:00' }; }
-        function getEmptyState() { return { schemaVersion: SCHEMA_VERSION, tasks: [], trash: [], habits: [], events: [], courses: [], taskTypes: [], tombstones: {}, favColors: [], workspaces: [], activeWorkspace: '', eventTypes: [], taskDefaults: { courseId: '', typeId: '', priority: 'normal' }, notificationSettings: getDefaultNotifSettings(), dashboardMonthMode: 'calendar', theme: 'theme-pastel-blue', fontScale: 100, sortPrimary: 'dueDate', isDarkMode: false, radarWindow: 3, radarSort: 'date', completionAnim: 'confetti' }; }
+        function getEmptyState() { return { schemaVersion: SCHEMA_VERSION, tasks: [], trash: [], habits: [], events: [], courses: [], taskTypes: [], tombstones: {}, favColors: [], remOffsets: [], workspaces: [], activeWorkspace: '', eventTypes: [], taskDefaults: { courseId: '', typeId: '', priority: 'normal' }, notificationSettings: getDefaultNotifSettings(), dashboardMonthMode: 'calendar', theme: 'theme-pastel-blue', fontScale: 100, sortPrimary: 'dueDate', isDarkMode: false, radarWindow: 3, radarSort: 'date', completionAnim: 'confetti' }; }
 
         function normalizeState(raw) {
             let s = { ...getEmptyState(), ...raw };
@@ -1688,6 +1688,13 @@
             s.tasks = uniqueById(s.tasks); s.trash = uniqueById(s.trash); s.habits = uniqueById(s.habits); s.events = uniqueById(s.events); s.workspaces = uniqueById(s.workspaces);
             if (!Array.isArray(s.eventTypes) || !s.eventTypes.length) s.eventTypes = defaultEventTypes();
             (s.eventTypes || []).forEach(t => { if (t && !t.category && !(s.events || []).some(e => e.type === t.id && e.category !== 'personal') && ((s.tasks || []).some(x => x.category === 'personal' && x.ptype === t.id) || (s.events || []).some(e => e.type === t.id && e.category === 'personal'))) { t.category = 'personal'; t.updatedAt = Date.now(); } });
+            {   // added reminder times: [{ id: 'ro' + t|e|h + minutes, cat, m, updatedAt }]; older builds kept them per device in notificationSettings.customOffsets
+                const ro = Array.isArray(s.remOffsets) ? s.remOffsets.slice() : [];
+                const old = s.notificationSettings && s.notificationSettings.customOffsets;
+                if (old && typeof old === 'object') { ['task', 'event', 'habit'].forEach(c => (Array.isArray(old[c]) ? old[c] : []).forEach(m => ro.push({ cat: c, m, updatedAt: Date.now() }))); delete s.notificationSettings.customOffsets; }
+                s.remOffsets = uniqueById(ro.filter(o => o && ['task', 'event', 'habit'].includes(o.cat) && Number.isInteger(Number(o.m)) && Number(o.m) > 0 && Number(o.m) <= 20160)
+                    .map(o => ({ id: 'ro' + o.cat[0] + Number(o.m), cat: o.cat, m: Number(o.m), updatedAt: Number(o.updatedAt) || 0 })).filter(isAlive)).slice(0, 120);
+            }
             s.favColors = uniqueById((Array.isArray(s.favColors) ? s.favColors : []).filter(f => f && /^#[0-9a-f]{6}$/i.test(f.hex || '')).map(f => ({ id: 'fc' + f.hex.slice(1).toLowerCase(), hex: f.hex.toLowerCase(), updatedAt: f.updatedAt || 0 })).filter(isAlive)).slice(0, 40);
             s.eventTypes = uniqueById(s.eventTypes.filter(t => t && t.id && typeof t.name === 'string' && t.name.trim()).map(t => ({ ...t, id: cleanId(t.id), name: t.name.trim().slice(0, 40), updatedAt: t.updatedAt || 0 })).filter(isAlive));
             if (!s.eventTypes.length) s.eventTypes = defaultEventTypes();
@@ -1921,10 +1928,10 @@
             const [scope, key] = where.split(':'); m = Math.round(Number(m));
             if (!Number.isFinite(m) || m <= 0 || m > 20160) return;
             const arr = scope === 'item' ? formRemState[key].offsets : (state.notificationSettings[key] = state.notificationSettings[key] || []);
-            if (arr.includes(m)) { showToast(`"${remOffLabel(m)}" כבר בחור`, 'info'); return; }
+            const cat = scope === 'item' ? key : REM_CAT_OF[key];   // it becomes a fixed option from now on (on every device)
+            if (arr.includes(m)) { remSaveOption(cat, m); saveState(); showToast(`"${remOffLabel(m)}" כבר בחור`, 'info'); return; }
             arr.push(m);
-            const cat = scope === 'item' ? key : REM_CAT_OF[key];   // it becomes a fixed option from now on
-            if (cat && !remBuiltIn(cat).some(o => o.val === m)) { const sv = remSaved(cat); if (!sv.includes(m)) sv.push(m); saveState(); }
+            remSaveOption(cat, m); saveState();
             if (scope === 'item') renderItemOffsetButtons(key); else { saveState(); renderNotificationSettingsUI(); }
             showToast(`נוספה תזכורת: ${remOffLabel(m)}`, 'success');
         }
@@ -2011,10 +2018,13 @@
         const REM_CAT_OF = { tasksOffsets: 'task', eventsOffsets: 'event', habitsOffsets: 'habit' };
         const REM_FIELD_OF = { task: 'tasksOffsets', event: 'eventsOffsets', habit: 'habitsOffsets' };
         function remBuiltIn(cat) { return cat === 'task' ? TASK_OFFSET_OPTIONS : cat === 'event' ? EVENT_OFFSET_OPTIONS : HABIT_OFFSET_OPTIONS; }
-        function remSaved(cat) {
-            const ns = state.notificationSettings; const all = ns.customOffsets && typeof ns.customOffsets === 'object' ? ns.customOffsets : (ns.customOffsets = {});
-            const a = Array.isArray(all[cat]) ? all[cat] : []; all[cat] = [...new Set(a.map(Number).filter(v => Number.isInteger(v) && v > 0 && v <= 20160 && !remBuiltIn(cat).some(o => o.val === v)))];
-            return all[cat];
+        // the times you added, for one kind (synced list state.remOffsets)
+        function remSaved(cat) { return (state.remOffsets || []).filter(o => o.cat === cat && !remBuiltIn(cat).some(b => b.val === o.m)).map(o => o.m); }
+        function remSaveOption(cat, m) {
+            if (!cat || remBuiltIn(cat).some(o => o.val === m)) return;
+            if (!Array.isArray(state.remOffsets)) state.remOffsets = [];
+            const id = 'ro' + cat[0] + m; if (state.remOffsets.some(o => o.id === id)) return;
+            state.remOffsets.push({ id, cat, m, updatedAt: Date.now() });
         }
         // fixed options + the ones you added + anything still chosen, in time order; added/extra ones can be deleted
         function remChipOptsFor(cat, selected) {
@@ -2035,7 +2045,8 @@
             if (m) renderItemOffsetButtons(m[1]); else if (document.getElementById(boxId)) renderNotificationSettingsUI();
         }
         function remDeleteOption(cat, v) {
-            v = Number(v); const saved = remSaved(cat), i = saved.indexOf(v); if (i > -1) saved.splice(i, 1);
+            v = Number(v); const id = 'ro' + cat[0] + v; const i = (state.remOffsets || []).findIndex(o => o.id === id);
+            if (i > -1) { state.remOffsets.splice(i, 1); addTombstone(id, 'remOffset'); }
             const ns = state.notificationSettings, f = REM_FIELD_OF[cat];
             const drop = arr => { const k = arr ? arr.indexOf(v) : -1; if (k > -1 && arr.length > 1) arr.splice(k, 1); };
             drop(ns[f]); if (formRemState[cat]) drop(formRemState[cat].offsets);
@@ -2747,8 +2758,8 @@
             createBackup('before-import', true);
             // "replace" must win over synced copies too: removed items get tombstones, kept items get a fresh timestamp
             const now = Date.now(), ids = new Set();
-            ['tasks', 'trash', 'habits', 'events', 'courses', 'taskTypes', 'workspaces', 'eventTypes', 'favColors'].forEach(k => (next[k] || []).forEach(x => { ids.add(x.id); x.updatedAt = now; }));
-            ['tasks', 'trash', 'habits', 'events', 'courses', 'taskTypes', 'workspaces', 'eventTypes', 'favColors'].forEach(k => (state[k] || []).forEach(x => { if (!ids.has(x.id)) next.tombstones[x.id] = { kind: k, deletedAt: now }; }));
+            ['tasks', 'trash', 'habits', 'events', 'courses', 'taskTypes', 'workspaces', 'eventTypes', 'favColors', 'remOffsets'].forEach(k => (next[k] || []).forEach(x => { ids.add(x.id); x.updatedAt = now; }));
+            ['tasks', 'trash', 'habits', 'events', 'courses', 'taskTypes', 'workspaces', 'eventTypes', 'favColors', 'remOffsets'].forEach(k => (state[k] || []).forEach(x => { if (!ids.has(x.id)) next.tombstones[x.id] = { kind: k, deletedAt: now }; }));
             Object.keys(next.tombstones).forEach(id => { if (ids.has(id)) delete next.tombstones[id]; });
             state = next; importPending = null;
             saveState(); closeImportPreview(); applyLoadedStateUI();
@@ -5426,7 +5437,7 @@
         const CLOUD_MAX = 900000;                                          // Firestore allows ~1 MB per document
         const Sync = { delay: 1500, timer: null, lastPushed: null, ref: null, ready: false, writing: false, again: false, status: 'local', lastAt: 0, unsub: null, asking: false, busyNow: false, hiddenAt: 0 };
         const Cloud = { fb: null, app: null, auth: null, db: null, user: null, loadErr: '', busy: false };
-        function payloadOf(s) { return { tasks: s.tasks, trash: s.trash, habits: s.habits, events: s.events, courses: s.courses, taskTypes: s.taskTypes, workspaces: s.workspaces || [], eventTypes: s.eventTypes || [], favColors: s.favColors || [], tombstones: s.tombstones, schemaVersion: s.schemaVersion }; }
+        function payloadOf(s) { return { tasks: s.tasks, trash: s.trash, habits: s.habits, events: s.events, courses: s.courses, taskTypes: s.taskTypes, workspaces: s.workspaces || [], eventTypes: s.eventTypes || [], favColors: s.favColors || [], remOffsets: s.remOffsets || [], tombstones: s.tombstones, schemaVersion: s.schemaVersion }; }
         function canon(obj) {
             if (Array.isArray(obj)) return '[' + obj.map(canon).join(',') + ']';
             if (obj && typeof obj === 'object') { const keys = Object.keys(obj).sort(); return '{' + keys.filter(k => obj[k] !== undefined).map(k => JSON.stringify(k) + ':' + canon(obj[k])).join(',') + '}'; }
@@ -5434,7 +5445,7 @@
         }
         function sortedPayload(p) {
             const byId = (x, y) => x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
-            return { schemaVersion: p.schemaVersion, tasks: [...p.tasks].sort(byId), trash: [...p.trash].sort(byId), habits: [...p.habits].sort(byId), events: [...p.events].sort(byId), courses: [...p.courses].sort(byId), taskTypes: [...p.taskTypes].sort(byId), workspaces: [...(p.workspaces || [])].sort(byId), eventTypes: [...(p.eventTypes || [])].sort(byId), favColors: [...(p.favColors || [])].sort(byId), tombstones: p.tombstones };
+            return { schemaVersion: p.schemaVersion, tasks: [...p.tasks].sort(byId), trash: [...p.trash].sort(byId), habits: [...p.habits].sort(byId), events: [...p.events].sort(byId), courses: [...p.courses].sort(byId), taskTypes: [...p.taskTypes].sort(byId), workspaces: [...(p.workspaces || [])].sort(byId), eventTypes: [...(p.eventTypes || [])].sort(byId), favColors: [...(p.favColors || [])].sort(byId), remOffsets: [...(p.remOffsets || [])].sort(byId), tombstones: p.tombstones };
         }
         function mergeArrays(local, remote) {
             const map = new Map();
@@ -5453,6 +5464,7 @@
             res.workspaces = mergeArrays(a.workspaces || [], b.workspaces || []);
             res.eventTypes = mergeArrays(a.eventTypes || [], b.eventTypes || []);
             res.favColors = mergeArrays(a.favColors || [], b.favColors || []);
+            res.remOffsets = mergeArrays(a.remOffsets || [], b.remOffsets || []);
             const allTasksMap = new Map();
             (a.tasks || []).concat(a.trash || []).forEach(t => allTasksMap.set(t.id, t));
             (b.tasks || []).concat(b.trash || []).forEach(t => { const ex = allTasksMap.get(t.id); if (!ex || (t.updatedAt || 0) > (ex.updatedAt || 0)) allTasksMap.set(t.id, t); });
