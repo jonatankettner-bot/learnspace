@@ -5464,12 +5464,17 @@
         // The schedule changes over time: h.daysLog = [{from:'', days}, {from:'2026-11-17', days}, ...] (ascending, `from` inclusive).
         // A date is judged by the schedule that was in force THEN, so adding or removing a weekday later never rewrites the past
         // (otherwise every old Friday/Saturday would suddenly count as missed and burn the streak). No log = one schedule for all dates.
-        function habitDaysAt(h, iso) {
+        // A past date never has MORE scheduled days than the habit has now: the log can only take days away (a weekday added later
+        // does not count before it was added), so no history (and no repair from backups) can turn a day into a miss.
+        function habitLogDays(h, iso) {
             let best = null, bf = null;
             if (Array.isArray(h.daysLog)) h.daysLog.forEach(e => { if (e && typeof e.from === 'string' && Array.isArray(e.days) && e.from <= iso && (bf === null || e.from >= bf)) { best = e.days; bf = e.from; } });
-            return best || h.days;
+            if (!best) return null;
+            const cur = habitDays(h);
+            return [...new Set(best.map(Number))].filter(n => cur.includes(n)).sort((a, b) => a - b);
         }
-        function habitDaysOn(h, iso) { const d = (habitDaysAt(h, iso) || []).map(Number).filter(n => n >= 0 && n <= 6); return d.length ? d : [0, 1, 2, 3, 4, 5, 6]; }
+        function habitDaysAt(h, iso) { const L = habitLogDays(h, iso); return L || h.days; }
+        function habitDaysOn(h, iso) { const L = habitLogDays(h, iso); if (L) return L; const d = (Array.isArray(h.days) ? h.days : []).map(Number).filter(n => n >= 0 && n <= 6); return d.length ? d : [0, 1, 2, 3, 4, 5, 6]; }
         function habitStartIso(h) {
             const c = []; if (h.createdAt) { const d = new Date(typeof h.createdAt === 'number' ? h.createdAt : Date.parse(h.createdAt)); if (!isNaN(d)) c.push(localIso(d)); }
             (h.completedDates || []).forEach(x => { if (/^\d{4}-\d{2}-\d{2}$/.test(x)) c.push(x); });
