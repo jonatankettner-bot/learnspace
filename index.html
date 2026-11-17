@@ -4998,6 +4998,75 @@
             const out = []; log.forEach(e => { if (!out.length || !habitSameDays(out[out.length - 1].days, e.days)) out.push(e); });
             if (out.length > 1) h.daysLog = out; else delete h.daysLog;
         }
+        // Repair for habits whose days were changed BEFORE the log existed (the change rewrote the whole past then).
+        // The local auto-backups still hold the old days: rebuild the log from them. Never makes a day count as missed that
+        // did not before (a change counts from the first backup that shows it), and never bumps updatedAt (a newer edit from
+        // another device always wins the merge; the repair simply runs again after it).
+        let habitRepairCache = null;
+        function habitRepairFromBackups() {
+            if (!Array.isArray(state.habits) || !state.habits.some(h => !Array.isArray(h.daysLog) || !h.daysLog.length)) return false;
+            if (!habitRepairCache) {
+                habitRepairCache = {};
+                let snaps = []; try { snaps = (typeof bkSnaps === 'function' ? bkSnaps() : []).filter(s => s && s.at && s.data && Array.isArray(s.data.habits)).sort((a, b) => a.at - b.at); } catch (e) { snaps = []; }
+                snaps.forEach(s => s.data.habits.forEach(x => {
+                    if (!x || !x.id || !Array.isArray(x.days)) return;
+                    const days = [...new Set(x.days.map(Number).filter(n => n >= 0 && n <= 6))].sort((a, b) => a - b);
+                    const L = habitRepairCache[x.id] || (habitRepairCache[x.id] = []);
+                    if (!L.length) L.push({ from: '', days });
+                    else if (!habitSameDays(L[L.length - 1].days, days)) L.push({ from: localIso(new Date(s.at)), days });
+                }));
+            }
+            const t = localIso(new Date()); let changed = false;
+            state.habits.forEach(h => {
+                if (Array.isArray(h.daysLog) && h.daysLog.length) return;
+                const L = habitRepairCache[h.id]; if (!L || !L.length) return;
+                const cur = [...new Set((Array.isArray(h.days) ? h.days : [0, 1, 2, 3, 4]).map(Number))].sort((a, b) => a - b);
+                let log = L.map(e => ({ from: e.from, days: [...e.days] }));
+                if (!habitSameDays(log[log.length - 1].days, cur)) log.push({ from: t, days: cur });
+                const out = []; log.forEach(e => { if (out.length && out[out.length - 1].from === e.from) out[out.length - 1] = e; else if (!out.length || !habitSameDays(out[out.length - 1].days, e.days)) out.push(e); });
+                if (out.length > 1) { h.daysLog = out; changed = true; }
+            });
+            if (changed) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {} }
+            return changed;
+        }
+
+
+        // ===== Period arrows (לו"ז, today-tab habits, habits tab): hold to step fast, accelerating, with a soft glow while it runs =====
+        const NavRep = { sel: '.cal-arrow, .dash-hnav, #habit-day-prev, #habit-day-next', t: null, act: '', fn: null, n: 0, on: false, eat: 0 };
+        (function () {
+            const css = document.createElement('style');
+            css.textContent = `.cal-arrow,.dash-hnav,#habit-day-prev,#habit-day-next{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.nav-arm{transform:scale(.92);box-shadow:0 0 0 3px rgba(99,102,241,.16)!important;transition:transform .35s ease,box-shadow .35s ease!important}
+.nav-rep{transform:scale(.92);box-shadow:0 0 0 3px rgba(99,102,241,.35),0 0 14px rgba(99,102,241,.3)!important;animation:navRepPulse .7s ease-in-out infinite}
+@keyframes navRepPulse{50%{box-shadow:0 0 0 5px rgba(99,102,241,.2),0 0 18px rgba(99,102,241,.42)}}`;
+            document.head.appendChild(css);
+        })();
+        // the arrow is often re-rendered on every step: find the live one by its action
+        function navRepEl() { return NavRep.act ? [...document.querySelectorAll(NavRep.sel)].find(b => b.getAttribute('onclick') === NavRep.act) || null : null; }
+        function navRepMark(cls) { document.querySelectorAll('.nav-arm, .nav-rep').forEach(b => b.classList.remove('nav-arm', 'nav-rep')); const b = navRepEl(); if (b && cls) b.classList.add(cls); return b; }
+        function navRepStop() { clearTimeout(NavRep.t); NavRep.t = null; if (NavRep.on) NavRep.eat = Date.now(); NavRep.on = false; NavRep.n = 0; navRepMark(''); NavRep.act = ''; NavRep.fn = null; }
+        function navRepTick() {
+            const b = navRepEl();
+            if (!NavRep.fn || (b && b.disabled)) { navRepStop(); return; }      // nothing more to step (e.g. reached today)
+            NavRep.on = true; NavRep.n++;
+            try { NavRep.fn.call(b || window); } catch (e) { navRepStop(); return; }
+            const nb = navRepMark('nav-rep'); if (nb && nb.disabled) { navRepStop(); return; }
+            NavRep.t = setTimeout(navRepTick, NavRep.n < 4 ? 230 : NavRep.n < 10 ? 130 : 70);   // accelerate
+        }
+        document.addEventListener('pointerdown', e => {
+            const b = e.target && e.target.closest && e.target.closest(NavRep.sel);
+            if (!b || b.disabled || e.button > 0) return;
+            navRepStop();
+            NavRep.act = b.getAttribute('onclick') || ''; NavRep.fn = b.onclick; if (!NavRep.fn || !NavRep.act) { NavRep.act = ''; return; }
+            b.classList.add('nav-arm');
+            NavRep.t = setTimeout(navRepTick, 420);
+        }, true);
+        document.addEventListener('pointerup', navRepStop, true);
+        document.addEventListener('pointercancel', navRepStop, true);
+        window.addEventListener('blur', navRepStop);
+        // the click that ends a hold must not add one more step
+        document.addEventListener('click', e => { if (NavRep.eat && Date.now() - NavRep.eat < 600 && e.target && e.target.closest && e.target.closest(NavRep.sel)) { e.preventDefault(); e.stopImmediatePropagation(); NavRep.eat = 0; } }, true);
+        document.addEventListener('contextmenu', e => { if (e.target && e.target.closest && e.target.closest(NavRep.sel)) e.preventDefault(); }, true);
 
         function renderReminderStatus() {
             renderNotifPermissionBtn();
@@ -5174,6 +5243,7 @@
 
         // --- 9. Render Lists ---
         function renderAll() {
+            try { habitRepairFromBackups(); } catch (e) {}
             renderGenericDropdowns(); renderEventTypeOptions(); renderTasks(); renderHabits(); renderSchedule(); renderWorkspaceUI(); renderEventTypesSettings();
             if(activeTab === 'dashboard') renderDashboard(currentDashboardView);
         }
