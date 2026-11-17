@@ -5493,7 +5493,7 @@
             for (let k = 0; k < 3660; k++) {
                 const iso = back(k); if (startIso && iso < startIso) break; if (!startIso) break;
                 const s = status(iso);
-                if (s === 'done') { if (scheduled(iso)) streak++; } else if (s === 'miss') break;
+                if (s === 'done') streak++; else if (s === 'miss') break;   // every marked day counts, also on a day that is not scheduled
             }
             // best streak: walk forward from the first day
             let best = 0, run = 0;
@@ -5501,7 +5501,7 @@
                 const [sy, sm, sd] = startIso.split('-').map(Number);
                 for (let d = new Date(sy, sm - 1, sd, 12); localIso(d) <= todayIso; d.setDate(d.getDate() + 1)) {
                     const iso = localIso(d), s = status(iso);
-                    if (s === 'done' && scheduled(iso)) { run++; if (run > best) best = run; } else if (s === 'miss') run = 0;
+                    if (s === 'done') { run++; if (run > best) best = run; } else if (s === 'miss') run = 0;
                 }
             }
             const rate = n => { let due = 0, done = 0; for (let k = 0; k < n; k++) { const iso = back(k), s = status(iso); if (!scheduled(iso) || s === 'off' || s === 'pending') continue; due++; if (s === 'done') done++; } return { due, done, pct: due ? Math.round(100 * done / due) : null }; };
@@ -5557,7 +5557,7 @@
                 <div class="flex gap-2">${tile('ביצוע ב-7 ימים', pct(w))}${tile('ביצוע ב-30 ימים', pct(m))}${tile('שיא רצף', best)}</div>
                 <div class="flex items-center justify-between text-[10px] opacity-60 font-semibold mt-3 mb-0.5 px-0.5"><span>7 ימים אחרונים · היום משמאל</span><span>30 ימים</span></div>
                 <div>${rows}</div>
-                <p class="text-[10px] opacity-60 mt-2 leading-relaxed">אחוז הביצוע נספר רק בימים שבהם ההרגל מתוכנן. היום נספר רק אחרי שסומן. ימים שלא מתוכננים לא שוברים רצף.</p>`;
+                <p class="text-[10px] opacity-60 mt-2 leading-relaxed">אחוז הביצוע נספר רק בימים שבהם ההרגל מתוכנן. היום נספר רק אחרי שסומן. ימים שלא מתוכננים לא שוברים רצף, ויום שסימנת נספר ברצף תמיד.</p>`;
         }
 
         // --- 13. Events ---
